@@ -1,0 +1,21 @@
+# VS Code
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.env
+venv/
+env/
+
+# Node
+node_modules/
+.next/
+
+# OS
+Thumbs.db
+.DS_Store
