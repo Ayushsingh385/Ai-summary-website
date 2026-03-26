@@ -1,6 +1,6 @@
 import { FiDownload } from 'react-icons/fi';
 
-const DownloadBar = ({ onDownload, isDownloading, disabled }) => {
+const DownloadBar = ({ onDownload, isDownloading, disabled, activeTab }) => {
   return (
     <div className="glass-panel fade-in" style={{ 
       marginTop: '2rem', 
@@ -13,20 +13,23 @@ const DownloadBar = ({ onDownload, isDownloading, disabled }) => {
       <h3 style={{ color: 'var(--text-main)' }}>Export Results</h3>
       
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-        <button 
-          className="btn btn-outline" 
-          onClick={() => onDownload('txt')}
-          disabled={isDownloading || disabled}
-        >
-          <FiDownload /> Download TXT
-        </button>
+        {activeTab === 'summary' && (
+          <button 
+            className="btn btn-outline" 
+            onClick={() => onDownload('txt', 'summary')}
+            disabled={isDownloading || disabled}
+          >
+            <FiDownload /> Download TXT
+          </button>
+        )}
         
         <button 
           className="btn btn-primary" 
-          onClick={() => onDownload('pdf')}
+          onClick={() => onDownload('pdf', activeTab)}
           disabled={isDownloading || disabled}
         >
-          <FiDownload /> Download Case Summary (PDF)
+          <FiDownload /> 
+          {activeTab === 'summary' ? 'Download Case Summary (PDF)' : 'Download Original Case'}
         </button>
       </div>
     </div>

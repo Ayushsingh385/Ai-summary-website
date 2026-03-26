@@ -13,6 +13,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from routers.summarize import router as summarize_router
+from database import engine
+import models
+
+# Initialize database tables
+models.Base.metadata.create_all(bind=engine)
+
 
 # ──────────────────────────────────────────────────────────────
 # Configure logging

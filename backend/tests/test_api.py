@@ -173,3 +173,26 @@ class TestHealthCheck:
         assert response.status_code == 200
         data = response.json()
         assert data["message"] == "PDF Summarizer API is running"
+
+
+# ──────────────────────────────────────────────────────────────
+# /api/save_case
+# ──────────────────────────────────────────────────────────────
+
+class TestSaveEndpoint:
+    """Tests for POST /api/save_case."""
+
+    def test_save_case_success(self, client):
+        """Saving a case should store it in the database and FAISS."""
+        payload = {
+            "filename": "test_judgment.pdf",
+            "original_text": SAMPLE_TEXT,
+            "summary_text": "This is a generated summary of the Supreme Court judgment.",
+            "keywords": ["Supreme Court", "Judgment", "Appeal"],
+            "stats": {"word_count": 500, "reading_time": 3}
+        }
+        response = client.post("/api/save_case", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["message"] == "Case saved successfully"
+        assert "case_id" in data

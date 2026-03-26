@@ -12,6 +12,10 @@ import re
 import logging
 from collections import Counter
 
+from database import SessionLocal
+from models import CaseDocument
+from services.vector_service import vector_service
+
 logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────
@@ -114,10 +118,27 @@ def summarize_text(text: str, length: str = "medium") -> dict:
     if length not in BART_LENGTHS:
         length = "medium"
 
+    # RAG: Check for similar past cases
+    context_prefix = ""
+    similar_cases = vector_service.find_similar(text, top_k=1, threshold=0.75)
+    
+    if similar_cases:
+        case_id = similar_cases[0][0]
+        db = SessionLocal()
+        try:
+            past_case = db.query(CaseDocument).filter(CaseDocument.id == case_id).first()
+            if past_case and past_case.summary_text:
+                context_prefix = f"[Reference style from similar case: {past_case.summary_text}]\n\n"
+                logger.info(f"RAG Context added from past case ID {case_id}")
+        except Exception as e:
+            logger.error(f"Error fetching past case for RAG: {e}")
+        finally:
+            db.close()
+
     pipe = _get_bart_pipeline()
 
     if pipe is not None:
-        result = _bart_summarize(pipe, text, length)
+        result = _bart_summarize(pipe, text, length, context_prefix=context_prefix)
     else:
         result = _extractive_summarize(text, length)
 
@@ -128,7 +149,7 @@ def summarize_text(text: str, length: str = "medium") -> dict:
 # BART abstractive summarization
 # ──────────────────────────────────────────────────────────────
 
-def _bart_summarize(pipe, text: str, length: str) -> dict:
+def _bart_summarize(pipe, text: str, length: str, context_prefix: str = "") -> dict:
     """Run BART abstractive summarization, chunking if needed."""
     max_len, min_len = BART_LENGTHS[length]
 
@@ -137,6 +158,9 @@ def _bart_summarize(pipe, text: str, length: str) -> dict:
 
     partial_summaries = []
     for i, chunk in enumerate(chunks):
+        # We only prepend the RAG context to the first chunk
+        chunk_with_context = (context_prefix + chunk) if i == 0 else chunk
+        
         # Ensure min_len doesn't exceed the chunk word count
         chunk_words = len(chunk.split())
         effective_min = min(min_len, max(10, chunk_words // 3))
@@ -147,7 +171,7 @@ def _bart_summarize(pipe, text: str, length: str) -> dict:
 
         try:
             out = pipe(
-                chunk,
+                chunk_with_context,
                 max_length=effective_max,
                 min_length=effective_min,
                 do_sample=False,

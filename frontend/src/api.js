@@ -47,3 +47,48 @@ export const downloadSummary = async (summary, originalWordCount, summaryWordCou
   link.parentNode.removeChild(link);
   window.URL.revokeObjectURL(url);
 };
+
+export const downloadOriginalCase = async (originalText, originalWordCount) => {
+  const response = await api.post('/download_original', {
+    original_text: originalText,
+    original_word_count: originalWordCount
+  }, {
+    responseType: 'blob'
+  });
+  
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `original_case.pdf`);
+  document.body.appendChild(link);
+  link.click();
+  
+  link.parentNode.removeChild(link);
+  window.URL.revokeObjectURL(url);
+};
+
+export const saveCase = async (filename, originalText, summaryText, keywords, stats) => {
+  const response = await api.post('/save_case', {
+    filename,
+    original_text: originalText,
+    summary_text: summaryText,
+    keywords,
+    stats
+  });
+  return response.data;
+};
+
+export const fetchHistory = async () => {
+  const response = await api.get('/history');
+  return response.data;
+};
+
+export const searchCases = async (query) => {
+  const response = await api.post('/search', { query, top_k: 5 });
+  return response.data;
+};
+
+export const deleteCase = async (caseId) => {
+  const response = await api.delete(`/delete_case/${caseId}`);
+  return response.data;
+};

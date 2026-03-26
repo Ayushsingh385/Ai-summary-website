@@ -1,9 +1,9 @@
 """
 PDF Service — Handles PDF file validation and text extraction.
-Uses pdfplumber for reliable text extraction from PDF documents.
+Uses pypdfium2 for high-performance text extraction.
 """
 
-import pdfplumber
+import pypdfium2 as pdfium
 from io import BytesIO
 from fastapi import HTTPException
 
@@ -52,26 +52,36 @@ def validate_pdf(file_bytes: bytes, content_type: str, filename: str) -> None:
 
 def extract_text_from_pdf(file_bytes: bytes) -> dict:
     """
-    Extract text from a PDF file using pdfplumber.
+    Extract text from a PDF file using pypdfium2 (high performance).
     Returns a dict with extracted text, page count, and per-page text.
     """
     try:
         pages_text = []
-        full_text = ""
+        full_text_list = []
 
-        with pdfplumber.open(BytesIO(file_bytes)) as pdf:
-            page_count = len(pdf.pages)
+        # Load document from bytes
+        pdf = pdfium.PdfDocument(file_bytes)
+        page_count = len(pdf)
 
-            for i, page in enumerate(pdf.pages):
-                text = page.extract_text() or ""
-                pages_text.append({
-                    "page_number": i + 1,
-                    "text": text.strip(),
-                    "char_count": len(text.strip())
-                })
-                full_text += text + "\n\n"
-
-        full_text = full_text.strip()
+        for i in range(page_count):
+            page = pdf.get_page(i)
+            text_page = page.get_textpage()
+            text = text_page.get_text_range() or ""
+            
+            clean_text = text.strip()
+            pages_text.append({
+                "page_number": i + 1,
+                "text": clean_text,
+                "char_count": len(clean_text)
+            })
+            full_text_list.append(clean_text)
+            
+            # Close page resources
+            text_page.close()
+            page.close()
+        
+        pdf.close()
+        full_text = "\n\n".join(full_text_list).strip()
 
         if not full_text or len(full_text) < 10:
             raise HTTPException(

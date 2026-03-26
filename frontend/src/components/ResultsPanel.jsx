@@ -1,8 +1,6 @@
-import { useState } from 'react';
 import { FiClock, FiFile, FiTag } from 'react-icons/fi';
 
-const ResultsPanel = ({ originalText, summaryResult, keywords }) => {
-  const [activeTab, setActiveTab] = useState('summary');
+const ResultsPanel = ({ originalText, summaryResult, keywords, activeTab, setActiveTab }) => {
 
   return (
     <div className="glass-panel fade-in" style={{ marginTop: '2rem', padding: '1rem' }}>
