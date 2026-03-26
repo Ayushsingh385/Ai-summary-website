@@ -19,17 +19,14 @@ A full-stack web application designed to extract text from PDF documents and gen
 
 ## 🏗️ High-Level Architecture
 
-```
-  ┌──────────────────┐       HTTP        ┌──────────────────┐
-  │  👤 User Browser │  ◄──────────────► │  ⚙️ FastAPI      │
-  │  (React Frontend)│                   │  (Python Server) │
-  └──────────────────┘                   └────────┬─────────┘
-                                                  │
-                                                  ▼
-                                         ┌──────────────────┐
-                                         │  🤖 NLP Engine   │
-                                         │  (BART / spaCy)  │
-                                         └──────────────────┘
+```mermaid
+graph LR
+    A["👤 User's Browser<br/>(React Frontend)"] -->|"HTTP requests"| B["⚙️ FastAPI Backend<br/>(Python Server)"]
+    B -->|"Memory (Metadata)"| D["🗄️ SQLite Database"]
+    B -->|"Memory (Context Vectors)"| E["🧠 FAISS Vector Store"]
+    B -->|"PDF text"| C["🤖 NLP Engine<br/>(BART / spaCy / Sentence-Transformers)"]
+    C -->|"Summary, Keywords, Vectors"| B
+    B -->|"JSON / File response"| A
 ```
 
 The app is split into two independent halves that talk via HTTP:
@@ -37,7 +34,7 @@ The app is split into two independent halves that talk via HTTP:
 | Layer | Tech | Port | Purpose |
 |-------|------|------|---------|
 | **Frontend** | React + Vite | `5173` | The UI the user sees and interacts with |
-| **Backend** | FastAPI (Python) | `8000` | Receives PDFs, runs NLP, returns results |
+| **Backend** | FastAPI (Python) | `8000` | Receives PDFs, runs NLP, stores cases, returns results |
 
 ---
 
@@ -48,11 +45,14 @@ project_NLP/
 ├── backend/                  ← Python server
 │   ├── main.py               ← App entry point (FastAPI setup)
 │   ├── requirements.txt      ← Python dependencies
+│   ├── database.py           ← SQLite database setup
+│   ├── models.py             ← SQLAlchemy database tables
 │   ├── routers/
 │   │   └── summarize.py      ← All API endpoint definitions
 │   ├── services/
 │   │   ├── pdf_service.py    ← PDF validation & text extraction
 │   │   ├── nlp_service.py    ← Summarization & keyword extraction
+│   │   ├── vector_service.py ← FAISS vector search & storage
 │   │   └── download_service.py ← Generate downloadable PDF/TXT files
 │   └── tests/                ← Automated test suite
 │       ├── conftest.py       ← Shared fixtures (test data)
@@ -68,11 +68,12 @@ project_NLP/
 │   │   ├── index.css         ← Global styles
 │   │   ├── App.css           ← Component styles
 │   │   └── components/
-│   │       ├── Header.jsx         ← App title bar
+│   │       ├── Header.jsx         ← App title bar & History toggle
 │   │       ├── FileUpload.jsx     ← Drag-and-drop PDF upload
 │   │       ├── SummaryOptions.jsx ← Short/Medium/Detailed selector
-│   │       ├── ResultsPanel.jsx   ← Summary + keywords display
-│   │       ├── DownloadBar.jsx    ← Export buttons (PDF/TXT)
+│   │       ├── ResultsPanel.jsx   ← Tabbed view for Summary/Original
+│   │       ├── HistorySidebar.jsx ← Slide-out panel for case history & search
+│   │       ├── DownloadBar.jsx    ← Context-aware export buttons
 │   │       └── LoadingSpinner.jsx ← Full-screen loading overlay
 │   └── package.json
 │
@@ -85,13 +86,35 @@ project_NLP/
 
 Here's what happens when a user uploads a PDF and gets a summary:
 
-1. **User drops a PDF** → React sends the file to `POST /api/upload`
-2. **Backend validates the PDF** → Checks file type, size, magic bytes (`%PDF-`)
-3. **Text is extracted** → `pdfplumber` reads every page and extracts text
-4. **Frontend receives text + stats** → word count, page count, reading time
-5. **Keywords are extracted** → `POST /api/keywords` → spaCy NER + frequency analysis
-6. **Text is summarized** → `POST /api/summarize` → BART model generates a summary
-7. **User downloads results** → `POST /api/download` → PDF or TXT file is generated and streamed
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant FE as React Frontend
+    participant API as FastAPI Backend
+    participant NLP as NLP Service
+    participant DB as SQLite / FAISS
+
+    U->>FE: Drops a PDF file
+    FE->>API: POST /api/upload
+    API-->>FE: JSON text + stats
+
+    FE->>API: POST /api/keywords
+    API->>NLP: extract_keywords()
+    API-->>FE: Keywords list
+
+    FE->>API: POST /api/summarize
+    API->>NLP: summarize_text()
+    API-->>FE: Summary result
+    
+    FE->>API: POST /api/save_case
+    API->>DB: Save to Database & FAISS Vector Store
+    API-->>FE: ✅ Saved Confirmation
+
+    U->>FE: Opens History & Searches "Fraud"
+    FE->>API: POST /api/search
+    API->>DB: Retrieve Top 5 Similar Cases
+    API-->>FE: Display Similar Cases
+```
 
 ---
 
@@ -121,7 +144,10 @@ This file defines **4 endpoints** (think of them as URLs the frontend can call):
 | `/api/upload` | POST | Receives a PDF file → validates it → extracts text → returns text + stats |
 | `/api/summarize` | POST | Receives text + length preference → runs AI summarization → returns summary |
 | `/api/keywords` | POST | Receives text → extracts named entities & keywords → returns keyword list |
-| `/api/download` | POST | Receives summary text + format → generates a PDF or TXT file → returns it for download |
+| `/api/save_case` | POST | Saves a case to SQLite and the FAISS Vector Index |
+| `/api/history` | GET | Fetches all saved cases ordered by date |
+| `/api/search` | POST | Uses RAG/FAISS to find past cases matching a typed query |
+| `/api/download /download_original` | POST | Generates either a Summary PDF/TXT or a beautifully formatted Original Case PDF |
 
 **Key design choices:**
 - Each endpoint uses **Pydantic models** (`SummarizeRequest`, `KeywordsRequest`, `DownloadRequest`) to define what data it expects — this gives automatic validation and clear documentation
@@ -178,7 +204,14 @@ This is the most complex file. It handles **two AI tasks**:
 
 ---
 
-### 5. `download_service.py` — File Generation
+### 5. `vector_service.py` & `database.py` — The Memory Bank 🗄️
+
+- **FAISS**: Converts any document into 384 numbers (a vector) using `all-MiniLM-L6-v2`. FAISS searches through these numbers mathematically, letting the user search "employee dispute" and find a case about "worker termination."
+- **SQLite Database**: Simply stores the raw strings and metadata (dates, filenames) so the UI can reconstruct the file later.
+
+---
+
+### 6. `download_service.py` — File Generation
 
 Two output formats:
 
@@ -191,7 +224,7 @@ Both include: original word count, summary word count, and compression ratio.
 
 ---
 
-### 6. `requirements.txt` — Python Dependencies
+### 7. `requirements.txt` — Python Dependencies
 
 | Package | What It's For |
 |---------|--------------|
@@ -203,6 +236,9 @@ Both include: original word count, summary word count, and compression ratio.
 | `transformers` | Hugging Face — provides the BART model |
 | `torch` | PyTorch — the engine BART runs on |
 | `spacy` | NLP library for keyword/entity extraction |
+| `sentence-transformers` | Creates embedding vectors for semantic search |
+| `faiss-cpu` | Facebook's incredibly fast vector search engine |
+| `sqlalchemy` | ORM for safely writing to the local SQLite database |
 | `pytest` | Testing framework |
 | `httpx` | HTTP client (used by pytest for async tests) |
 
@@ -223,12 +259,13 @@ This is the **central hub** that manages all application state and orchestrates 
 | `summaryResult` | object | The AI-generated summary + metadata |
 | `keywords` | array | List of extracted keywords with types |
 | `selectedLength` | string | Current summary length preference (short/medium/long) |
+| `activeTab` | string | Tracks whether user is viewing the Case Summary or Original Case Text |
 
 **Key functions:**
 - `handleFileUpload(file)` → Uploads PDF → extracts text → extracts keywords → summarizes (all in sequence)
 - `handleSummarize(text, length)` → Calls the summarize API
 - `onLengthChange(length)` → When user picks a different length, automatically re-summarizes
-- `handleDownload(format)` → Triggers file download (PDF or TXT)
+- `handleDownload(format, docType)` → Triggers contextually-aware file download (PDF/TXT) based on active tab
 
 ---
 
@@ -239,9 +276,12 @@ A thin wrapper around `axios` that maps to backend endpoints:
 | Function | Calls | Sends | Returns |
 |----------|-------|-------|---------|
 | `uploadPdf(file)` | `POST /api/upload` | Form data with PDF | Extracted text + stats |
-| `summarizeText(text, length)` | `POST /api/summarize` | Text + length preference | Summary + metadata |
-| `extractKeywords(text)` | `POST /api/keywords` | Text | Keywords array |
-| `downloadSummary(...)` | `POST /api/download` | Summary + format | Triggers browser download |
+| `summarizeText(...)` | `POST /api/summarize` | Text + length preference | Summary + metadata |
+| `extractKeywords(...)`| `POST /api/keywords` | Text | Keywords array |
+| `saveCase(...)` | `POST /api/save_case` | Metadata & Text | Success Confirmation |
+| `fetchHistory()` | `GET /api/history` | None | Array of all saved cases |
+| `searchCases(query)` | `POST /api/search` | Text Query | Top 5 matching cases |
+| `downloadSummary(...)`| `POST /api/download` | Summary + format | Triggers browser download |
 
 The `downloadSummary` function does something clever: it creates a temporary `<a>` link, clicks it programmatically to trigger the browser's native download dialog, then cleans up.
 
@@ -270,9 +310,15 @@ The `downloadSummary` function does something clever: it creates a temporary `<a
 - Right sidebar shows **statistics** (word counts, compression ratio) and **Legal Entities & Key Terms** as colored chips
 - Uses a glass-panel design with fade-in animation
 
+#### `HistorySidebar.jsx`
+- A sleek, slide-out right panel holding the semantic search bar and displaying all past cases.
+- Uses the FAISS Search API to instantly filter past cases based on concept meaning.
+- Selecting any file instantly hot-loads it into the ResultsPanel.
+
 #### `DownloadBar.jsx`
-- Two buttons: "Download TXT" and "Download Case Summary (PDF)"
-- Disabled while loading or downloading
+- Context-aware export buttons.
+- If `activeTab` is "Summary", offers "Download TXT" and "Download Case Summary (PDF)".
+- If `activeTab` is "Original", dynamically switches to "Download Original Case" to generate a professionally formatted original document.
 
 #### `LoadingSpinner.jsx`
 - Full-screen overlay with a spinning animation
@@ -354,6 +400,8 @@ python -m pytest tests/ -v
 
 | Decision | Why |
 |----------|-----|
+| **FAISS Vector Search over Standard SQL Search** | Legal terms map better semantically. A standard SQL `LIKE` query doesn't understand context. FAISS searches *meanings*. |
+| **Independent Frontend State** | You can click cases in the History sidebar, and the `App.jsx` immediately rewires the user's dashboard without making extra API calls to reconstruct the view. |
 | **Lazy-loading AI models** | BART is ~1.6 GB. Loading it at startup would slow down the server. Instead, it loads on the first summarize request. |
 | **Dual fallback system** | If BART can't load (no GPU, offline), the app still works with extractive summarization. Same for spaCy → frequency fallback. |
 | **Chunked summarization** | BART has a 1024-token limit. We split long documents into ~3000-char chunks, summarize each, then optionally do a second pass. |
