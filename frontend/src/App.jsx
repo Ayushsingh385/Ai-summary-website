@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { uploadPdf, summarizeText, extractKeywords, downloadSummary, downloadOriginalCase, saveCase } from './api';
+import { useState, useEffect } from 'react';
+import { uploadPdf, summarizeText, extractKeywords, downloadSummary, downloadOriginalCase, saveCase, fetchProfile } from './api';
 
 import Header from './components/Header';
 import FileUpload from './components/FileUpload';
@@ -8,10 +8,36 @@ import ResultsPanel from './components/ResultsPanel';
 import DownloadBar from './components/DownloadBar';
 import LoadingSpinner from './components/LoadingSpinner';
 import HistorySidebar from './components/HistorySidebar';
+import AuthPage from './components/AuthPage';
+import ChatBot from './components/ChatBot';
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
+  const [userProfile, setUserProfile] = useState(null);
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
+
   const [loadingMsg, setLoadingMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    document.body.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchProfile()
+        .then(data => setUserProfile(data))
+        .catch(err => {
+          console.error("Failed to fetch profile", err);
+          if (err.response && err.response.status === 401) handleLogout();
+        });
+    }
+  }, [isAuthenticated]);
   
   // Sidebar State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -136,6 +162,21 @@ function App() {
     }
   };
 
+  const handleLogin = (token) => {
+    localStorage.setItem('token', token);
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    setIsAuthenticated(false);
+    resetState();
+  };
+
+  if (!isAuthenticated) {
+    return <AuthPage onLogin={handleLogin} />;
+  }
+
   return (
     <div className="container">
       {loadingMsg && <LoadingSpinner message={loadingMsg} />}
@@ -146,7 +187,13 @@ function App() {
         onSelectCase={onSelectCaseFromHistory} 
       />
 
-      <Header onOpenHistory={() => setIsSidebarOpen(true)} />
+      <Header 
+        onOpenHistory={() => setIsSidebarOpen(true)} 
+        onLogout={handleLogout} 
+        userProfile={userProfile}
+        theme={theme}
+        toggleTheme={toggleTheme}
+      />
 
       <main>
         {/* Upload Section */}
@@ -197,6 +244,8 @@ function App() {
           </div>
         )}
       </main>
+
+      <ChatBot documentText={originalText} keywords={keywords} />
     </div>
   );
 }

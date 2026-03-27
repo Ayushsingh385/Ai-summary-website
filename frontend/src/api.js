@@ -6,6 +6,45 @@ const api = axios.create({
   baseURL: API_URL,
 });
 
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+const AUTH_URL = 'http://localhost:8000/auth';
+
+export const signUp = async (userData) => {
+  const response = await axios.post(`${AUTH_URL}/signup`, userData);
+  return response.data;
+};
+
+export const signIn = async (credentials) => {
+  const response = await axios.post(`${AUTH_URL}/signin`, credentials);
+  return response.data;
+};
+
+export const fetchProfile = async () => {
+  const token = localStorage.getItem('token');
+  const response = await axios.get(`${AUTH_URL}/me`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  return response.data;
+};
+
+export const chatWithBot = async (query, documentText = null, keywords = null) => {
+  const response = await axios.post(`http://localhost:8000/api/chat/`, {
+    query,
+    document_text: documentText,
+    document_keywords: keywords
+  });
+  return response.data;
+};
+
 export const uploadPdf = async (file) => {
   const formData = new FormData();
   formData.append('file', file);

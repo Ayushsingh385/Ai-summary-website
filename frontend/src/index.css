@@ -316,3 +316,13 @@ header p {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--accent-primary);
 }
+
+/* Light Mode Overrides */
+body[data-theme='light'] {
+  --bg-darker: #f8fafc;
+  --bg-dark: #f1f5f9;
+  --panel-bg: rgba(255, 255, 255, 0.85);
+  --panel-border: rgba(0, 0, 0, 0.1);
+  --text-main: #0f172a;
+  --text-muted: #475569;
+}

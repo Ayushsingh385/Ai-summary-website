@@ -13,9 +13,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from routers.summarize import router as summarize_router
+from routers.auth import router as auth_router
+from routers.chat import router as chat_router
 from database import engine
 import models
-
 # Initialize database tables
 models.Base.metadata.create_all(bind=engine)
 
@@ -52,6 +53,8 @@ app.add_middleware(
 # Register routers
 # ──────────────────────────────────────────────────────────────
 app.include_router(summarize_router)
+app.include_router(auth_router)
+app.include_router(chat_router)
 
 
 @app.get("/")
