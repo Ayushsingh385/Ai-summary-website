@@ -10,6 +10,7 @@ import LoadingSpinner from './components/LoadingSpinner';
 import HistorySidebar from './components/HistorySidebar';
 import AuthPage from './components/AuthPage';
 import ChatBot from './components/ChatBot';
+import CompareMode from './components/CompareMode';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
@@ -47,9 +48,12 @@ function App() {
   const [filename, setFilename] = useState('');
   const [summaryResult, setSummaryResult] = useState(null);
   const [keywords, setKeywords] = useState([]);
+  const [citations, setCitations] = useState([]);
   
   // UI State
+  const [appMode, setAppMode] = useState('summarize'); // 'summarize' | 'compare'
   const [selectedLength, setSelectedLength] = useState('medium');
+  const [selectedLanguage, setSelectedLanguage] = useState('en');
   const [isDownloading, setIsDownloading] = useState(false);
   const [activeTab, setActiveTab] = useState('summary');
 
@@ -58,6 +62,7 @@ function App() {
     setFilename('');
     setSummaryResult(null);
     setKeywords([]);
+    setCitations([]);
     setErrorMsg('');
     setActiveTab('summary');
   };
@@ -76,9 +81,10 @@ function App() {
       setLoadingMsg('Analyzing legal entities...');
       const keywordsRes = await extractKeywords(uploadRes.text).catch(err => {
         console.warn("Keywords error:", err);
-        return { keywords: [] };
+        return { keywords: [], citations: [] };
       });
-      setKeywords(keywordsRes.keywords);
+      setKeywords(keywordsRes.keywords || []);
+      setCitations(keywordsRes.citations || []);
       
       // 3. Summarize
       await handleSummarize(uploadRes.text, selectedLength, uploadRes.filename || file.name, keywordsRes.keywords);
@@ -90,14 +96,14 @@ function App() {
     }
   };
 
-  const handleSummarize = async (textToSummarize, lengthOption, currentFilename = filename, currentKeywords = keywords) => {
+  const handleSummarize = async (textToSummarize, lengthOption, languageOption = selectedLanguage, currentFilename = filename, currentKeywords = keywords) => {
     if (!textToSummarize) return;
     
     setLoadingMsg(
       'Generating abstractive summary...\n(This utilizes an AI model and may take a few moments)'
     );
     try {
-      const result = await summarizeText(textToSummarize, lengthOption);
+      const result = await summarizeText(textToSummarize, lengthOption, languageOption);
       setSummaryResult(result);
       
       // Background save for RAG
@@ -121,6 +127,8 @@ function App() {
     setOriginalText(caseItem.original_text || "");
     setFilename(caseItem.filename || "");
     setKeywords(caseItem.keywords || []);
+    setCitations([]); // Optional: could extract from originalText if needed, but keeping it simple for now
+    
     
     setSummaryResult({
       summary: caseItem.summary_text || "",
@@ -130,13 +138,39 @@ function App() {
     });
     
     setIsSidebarOpen(false); // Close sidebar automatically on mobile/etc
+    setActiveTab('summary');
+  };
+
+  const [historicalComparisonData, setHistoricalComparisonData] = useState(null);
+
+  const onSelectComparisonFromHistory = async (comparisonItem) => {
+    setIsSidebarOpen(false);
+    setAppMode('compare');
+    setLoadingMsg('Loading historical comparison...');
+    try {
+      import('./api').then(async (api) => {
+         const data = await api.fetchComparisonDetail(comparisonItem.id);
+         setHistoricalComparisonData(data);
+         setLoadingMsg('');
+      });
+    } catch (err) {
+      setErrorMsg('Failed to load comparison data');
+      setLoadingMsg('');
+    }
   };
 
   const onLengthChange = (length) => {
     setSelectedLength(length);
     // Automatically re-summarize if we already have text
     if (originalText) {
-      handleSummarize(originalText, length);
+      handleSummarize(originalText, length, selectedLanguage);
+    }
+  };
+
+  const onLanguageChange = (language) => {
+    setSelectedLanguage(language);
+    if (originalText) {
+      handleSummarize(originalText, selectedLength, language);
     }
   };
 
@@ -152,7 +186,8 @@ function App() {
           summaryResult.summary,
           summaryResult.original_word_count,
           summaryResult.summary_word_count,
-          format
+          format,
+          keywords
         );
       }
     } catch (err) {
@@ -185,6 +220,7 @@ function App() {
         isOpen={isSidebarOpen} 
         toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         onSelectCase={onSelectCaseFromHistory} 
+        onSelectComparison={onSelectComparisonFromHistory}
       />
 
       <Header 
@@ -196,52 +232,85 @@ function App() {
       />
 
       <main>
-        {/* Upload Section */}
-        <section style={{ marginBottom: '3rem' }}>
-          <FileUpload onUpload={handleFileUpload} />
-        </section>
+        {/* Mode Toggle */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '2rem' }}>
+          <button 
+            className="btn" 
+            style={{ 
+              background: appMode === 'summarize' ? 'var(--accent-primary)' : 'transparent',
+              border: appMode === 'summarize' ? 'none' : '1px solid var(--panel-border)'
+            }}
+            onClick={() => { resetState(); setAppMode('summarize'); setHistoricalComparisonData(null); }}
+          >
+            Summarize Case
+          </button>
+          <button 
+            className="btn" 
+            style={{ 
+              background: appMode === 'compare' ? 'var(--accent-secondary)' : 'transparent',
+              border: appMode === 'compare' ? 'none' : '1px solid var(--panel-border)'
+            }}
+            onClick={() => { resetState(); setAppMode('compare'); setHistoricalComparisonData(null); }}
+          >
+            Compare Documents
+          </button>
+        </div>
 
-        {/* Error Handling */}
-        {errorMsg && (
-          <div className="fade-in" style={{
-            background: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid var(--danger)',
-            padding: '1rem',
-            borderRadius: '8px',
-            color: '#fca5a5',
-            marginBottom: '2rem',
-            textAlign: 'center'
-          }}>
-            {errorMsg}
-          </div>
-        )}
+        {appMode === 'compare' ? (
+          <CompareMode selectedLanguage={selectedLanguage} initialHistoricalComparison={historicalComparisonData} />
+        ) : (
+          <>
+            {/* Upload Section */}
+            <section style={{ marginBottom: '3rem' }}>
+              <FileUpload onUpload={handleFileUpload} />
+            </section>
 
-        {/* Main Content Areas */}
-        {originalText && (
-          <div className="fade-in">
-            <h3 style={{ textAlign: 'center', marginBottom: '1rem' }}>Customize Case Summary Length</h3>
-            <SummaryOptions 
-              selectedLength={selectedLength} 
-              onSelect={onLengthChange} 
-            />
-            
-            <ResultsPanel 
-              originalText={originalText}
-              summaryResult={summaryResult}
-              keywords={keywords}
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-            />
-
-            {(summaryResult || originalText) && (
-              <DownloadBar 
-                onDownload={handleDownload} 
-                isDownloading={isDownloading} 
-                disabled={!!loadingMsg}
-                activeTab={activeTab}
-              />
+            {/* Error Handling */}
+            {errorMsg && (
+              <div className="fade-in" style={{
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid var(--danger)',
+                padding: '1rem',
+                borderRadius: '8px',
+                color: '#fca5a5',
+                marginBottom: '2rem',
+                textAlign: 'center'
+              }}>
+                {errorMsg}
+              </div>
             )}
-          </div>
+
+            {/* Main Content Areas */}
+            {originalText && (
+              <div className="fade-in">
+                <h3 style={{ textAlign: 'center', marginBottom: '1rem' }}>Customize Case Summary Length</h3>
+                <SummaryOptions 
+                  selectedLength={selectedLength} 
+                  onSelect={onLengthChange} 
+                  selectedLanguage={selectedLanguage}
+                  onLanguageChange={onLanguageChange}
+                />
+                
+                <ResultsPanel 
+                  originalText={originalText}
+                  summaryResult={summaryResult}
+                  keywords={keywords}
+                  citations={citations}
+                  activeTab={activeTab}
+                  setActiveTab={setActiveTab}
+                />
+
+                {(summaryResult || originalText) && (
+                  <DownloadBar 
+                    onDownload={handleDownload} 
+                    isDownloading={isDownloading} 
+                    disabled={!!loadingMsg}
+                    activeTab={activeTab}
+                  />
+                )}
+              </div>
+            )}
+          </>
         )}
       </main>
 

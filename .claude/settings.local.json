@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile services/difference_engine.py)",
+      "Bash(./venv/Scripts/python.exe -m py_compile services/difference_engine.py)",
+      "Bash(./venv/Scripts/python.exe -m py_compile routers/summarize.py)",
+      "Bash(./venv/Scripts/python.exe -c \"from services.difference_engine import compare_documents_semantic, get_comparison_summary; print\\('Import successful'\\)\")",
+      "Bash(./venv/Scripts/python.exe -c ':*)"
+    ]
+  }
+}

@@ -4,6 +4,7 @@ python-multipart==0.0.6
 pdfplumber==0.10.3
 
 fpdf2==2.7.6
+python-docx>=0.8.11
 aiofiles==23.2.1
 transformers>=4.36.0
 torch
@@ -19,3 +20,9 @@ PyJWT
 # Security & Configuration
 pydantic-settings>=2.0.0
 slowapi>=0.1.9
+
+# OCR & Translation
+pytesseract
+pdf2image
+Pillow
+deep-translator

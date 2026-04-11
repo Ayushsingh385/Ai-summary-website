@@ -6,7 +6,11 @@ Uses pypdfium2 for high-performance text extraction.
 import pypdfium2 as pdfium
 from io import BytesIO
 from fastapi import HTTPException
+import pytesseract
+from pdf2image import convert_from_bytes
+import logging
 
+logger = logging.getLogger(__name__)
 
 # Maximum file size: 20 MB
 MAX_FILE_SIZE = 20 * 1024 * 1024
@@ -84,10 +88,38 @@ def extract_text_from_pdf(file_bytes: bytes) -> dict:
         full_text = "\n\n".join(full_text_list).strip()
 
         if not full_text or len(full_text) < 10:
+            logger.info("PDF text extraction failed or text is too short. Attempting OCR fallback...")
+            try:
+                # Convert PDF to list of images
+                images = convert_from_bytes(file_bytes)
+                pages_text = []
+                full_text_list = []
+                
+                for i, img in enumerate(images):
+                    text = pytesseract.image_to_string(img)
+                    clean_text = text.strip()
+                    pages_text.append({
+                        "page_number": i + 1,
+                        "text": clean_text,
+                        "char_count": len(clean_text)
+                    })
+                    full_text_list.append(clean_text)
+                
+                full_text = "\n\n".join(full_text_list).strip()
+                page_count = len(images)
+                
+            except Exception as ocr_err:
+                logger.error(f"OCR fallback failed: {ocr_err}")
+                raise HTTPException(
+                    status_code=422,
+                    detail="Could not extract meaningful text from the PDF. "
+                           "The file may be scanned/image-based or empty, and OCR failed."
+                )
+
+        if not full_text or len(full_text) < 10:
             raise HTTPException(
                 status_code=422,
-                detail="Could not extract meaningful text from the PDF. "
-                       "The file may be scanned/image-based or empty."
+                detail="Even with OCR, could not extract meaningful text from the PDF."
             )
 
         # Calculate word count and reading time

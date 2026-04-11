@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 import bcrypt
@@ -64,7 +64,8 @@ def create_access_token(data: dict):
 
 
 @router.post("/signup", response_model=schemas.UserResponse)
-def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def signup(request: Request, user: schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(
         (models.User.user_id == user.user_id) | (models.User.email_id == user.email_id)
     ).first()
@@ -87,7 +88,8 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/signin", response_model=schemas.Token)
-def signin(user: schemas.UserLogin, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def signin(request: Request, user: schemas.UserLogin, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.user_id == user.user_id).first()
     if not db_user or not verify_password(user.password, db_user.hashed_password):
         raise HTTPException(

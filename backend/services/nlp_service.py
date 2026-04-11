@@ -11,6 +11,8 @@ Keywords: spaCy Named Entity Recognition (NER) + frequency-based extraction.
 import re
 import logging
 from collections import Counter
+from deep_translator import GoogleTranslator
+import urllib.parse
 
 from database import SessionLocal
 from models import CaseDocument
@@ -105,12 +107,59 @@ RELEVANT_ENTITY_TYPES = {
     "NORP", "FAC", "PRODUCT", "WORK_OF_ART", "MONEY",
 }
 
+# ──────────────────────────────────────────────────────────────
+# Legal citation patterns
+# ──────────────────────────────────────────────────────────────
+
+CITATION_PATTERNS = {
+    # US Supreme Court and Federal Reporter
+    "us_supreme_court": r'\b\d+\s*U\.?S\.?\s*\d+\b',
+    "federal_reporter": r'\b\d+\s+F\.?\d*d\.?\s*\d+\b',
+    "federal_supplement": r'\b\d+\s+F\.?\s*Supp\.?\s*\d+\b',
+
+    # US Code (statutes)
+    "us_code": r'\b\d+\s*U\.?S\.?C\.?\s*§?\s*\d+[a-zA-Z0-9\-]*\b',
+
+    # Indian Legal Citations
+    "indian_sc": r'\b(?:AIR|S\.?C\.?C\.?|SCR)\s*\d{4}\s*(?:SC|SCC|SCR)?\s*\d+\b',
+    "indian_case_year": r'\b\[\s*\d{4}\s*\]\s*\d+\s*[A-Z]+\.?\s*\d+\b',
+    "indian_statute": r'\b(?:The\s+)?[A-Z][a-zA-Z\s]+(?:Act|Code|Rules|Regulations)\b(?:\s*,?\s*\d{4})?',
+
+    # Case citations (Party v. Party)
+    "case_citation": r'\b[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\s+v\.?\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\b',
+
+    # Common law reports
+    "law_report": r'\b\d+\s+[A-Z]{2,}\s+\d+\b',
+
+    # Section references
+    "section_ref": r'\b(?:section|sec\.?|§)\s*\d+[a-zA-Z0-9\-]*(?:\s*\(\d+\))?\b',
+}
+
 
 # ──────────────────────────────────────────────────────────────
 # Public API
 # ──────────────────────────────────────────────────────────────
 
-def summarize_text(text: str, length: str = "medium") -> dict:
+def translate_to_english(text: str) -> str:
+    """
+    Translates input text to English, splitting into chunks if necessary to bypass API limits.
+    """
+    if not text or len(text.strip()) == 0:
+        return text
+
+    try:
+        translator = GoogleTranslator(source='auto', target='en')
+        if len(text) > 4000:
+            chunks = _split_into_chunks(text, 4000)
+            translated_chunks = [translator.translate(chunk) for chunk in chunks]
+            return " ".join(translated_chunks)
+        else:
+            return translator.translate(text)
+    except Exception as e:
+        logger.error(f"Input translation to English failed: {e}")
+        return text
+
+def summarize_text(text: str, length: str = "medium", language: str = "en") -> dict:
     """
     Summarize *text* using BART (abstractive) with an automatic fallback
     to extractive summarization if the model is unavailable.
@@ -118,9 +167,12 @@ def summarize_text(text: str, length: str = "medium") -> dict:
     if length not in BART_LENGTHS:
         length = "medium"
 
+    # Ensure input text is translated to English for processing
+    english_text = translate_to_english(text)
+
     # RAG: Check for similar past cases
     context_prefix = ""
-    similar_cases = vector_service.find_similar(text, top_k=1, threshold=0.75)
+    similar_cases = vector_service.find_similar(english_text, top_k=1, threshold=0.75)
     
     if similar_cases:
         case_id = similar_cases[0][0]
@@ -138,9 +190,25 @@ def summarize_text(text: str, length: str = "medium") -> dict:
     pipe = _get_bart_pipeline()
 
     if pipe is not None:
-        result = _bart_summarize(pipe, text, length, context_prefix=context_prefix)
+        result = _bart_summarize(pipe, english_text, length, context_prefix=context_prefix)
     else:
-        result = _extractive_summarize(text, length)
+        result = _extractive_summarize(english_text, length)
+
+    # Multi-language translation
+    if language and language != "en":
+        try:
+            translator = GoogleTranslator(source='auto', target=language)
+            # Split summary into chunks if it is too long (deep_translator has 5000 limit)
+            summary_text = result["summary"]
+            if len(summary_text) > 4000:
+                chunks = _split_into_chunks(summary_text, 4000)
+                translated_chunks = [translator.translate(chunk) for chunk in chunks]
+                result["summary"] = " ".join(translated_chunks)
+            else:
+                result["summary"] = translator.translate(summary_text)
+            result["language"] = language
+        except Exception as e:
+            logger.error(f"Translation failed: {e}")
 
     return result
 
@@ -301,12 +369,15 @@ def extract_keywords(text: str, top_n: int = 15) -> list[dict]:
         {"keyword": str, "score": int, "type": "PERSON"|"ORG"|...|"FREQUENCY"}
     """
     nlp = _get_spacy_nlp()
+    
+    # Ensure input text is translated to English for SpaCy NER processing
+    english_text = translate_to_english(text)
 
     if nlp is not None:
-        return _extract_keywords_ner(nlp, text, top_n)
+        return _extract_keywords_ner(nlp, english_text, top_n)
 
     # Fallback: pure frequency (adds "FREQUENCY" type for consistency)
-    freq_keywords = _extract_keywords_frequency(text, top_n)
+    freq_keywords = _extract_keywords_frequency(english_text, top_n)
     for kw in freq_keywords:
         kw["type"] = "FREQUENCY"
     return freq_keywords
@@ -414,3 +485,306 @@ def compute_text_stats(text: str) -> dict:
         "sentence_count": len(sentences),
         "reading_time_minutes": max(1, round(len(words) / 200)),
     }
+
+
+# ──────────────────────────────────────────────────────────────
+# Citation extraction
+# ──────────────────────────────────────────────────────────────
+
+def extract_citations(text: str) -> list[dict]:
+    """
+    Extract legal citations from text using regex patterns.
+
+    Returns a list of dicts:
+        {"citation": str, "type": str, "position": [start, end]}
+    """
+    citations = []
+    seen = set()  # Track unique citations
+
+    for cite_type, pattern in CITATION_PATTERNS.items():
+        try:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            for match in matches:
+                citation_text = match.group().strip()
+                # Skip if already seen (case-insensitive)
+                if citation_text.lower() in seen:
+                    continue
+                seen.add(citation_text.lower())
+
+                # Generate Search Link
+                encoded_cite = urllib.parse.quote(citation_text)
+                if cite_type == "us_code":
+                    link_url = f"https://law.justia.com/search?query={encoded_cite}"
+                elif cite_type in ("case_citation", "law_report"):
+                    link_url = f"https://scholar.google.com/scholar?hl=en&q={encoded_cite}"
+                else:
+                    # Default / Indian databases
+                    link_url = f"https://indiankanoon.org/search/?formInput={encoded_cite}"
+
+                citations.append({
+                    "citation": citation_text,
+                    "type": cite_type.replace("_", " ").title(),
+                    "position": [match.start(), match.end()],
+                    "link": link_url
+                })
+        except re.error:
+            logger.warning(f"Invalid regex pattern for {cite_type}")
+            continue
+
+    # Sort by position
+    citations.sort(key=lambda x: x["position"][0])
+
+    return citations
+
+def _extract_entities_by_type(text: str) -> dict:
+    """
+    Extract ALL named entities from text grouped by type.
+    Runs NER on both raw text AND English translation to catch everything.
+    Returns dict like: {"PERSON": {"john doe": "John Doe"}, "DATE": {"2024": "2024"}, ...}
+    Keys are lowercased for comparison, values are original display text.
+    """
+    nlp = _get_spacy_nlp()
+    if nlp is None:
+        return {}
+
+    max_chars = 100_000
+
+    # Run NER on raw text first (catches original names/institutes)
+    raw_text = text[:max_chars] if len(text) > max_chars else text
+    entities: dict[str, dict[str, str]] = {}  # {TYPE: {lowercase: display_text}}
+
+    try:
+        doc_raw = nlp(raw_text)
+        for ent in doc_raw.ents:
+            clean = " ".join(ent.text.split()).strip()
+            if len(clean) < 2:
+                continue
+            bucket = entities.setdefault(ent.label_, {})
+            bucket[clean.lower()] = clean  # lowercase key, original display
+    except Exception:
+        pass
+
+    # Also run on English translation to catch anything missed
+    try:
+        english_text = translate_to_english(text)
+        eng_text = english_text[:max_chars] if len(english_text) > max_chars else english_text
+        doc_eng = nlp(eng_text)
+        for ent in doc_eng.ents:
+            clean = " ".join(ent.text.split()).strip()
+            if len(clean) < 2:
+                continue
+            bucket = entities.setdefault(ent.label_, {})
+            key = clean.lower()
+            if key not in bucket:
+                bucket[key] = clean
+    except Exception:
+        pass
+
+    return entities
+
+
+# User-friendly labels for SpaCy entity types
+_ENTITY_LABELS = {
+    "PERSON": "Persons / Names",
+    "ORG": "Organizations / Institutes",
+    "GPE": "Jurisdictions / Locations",
+    "LOC": "Locations",
+    "DATE": "Dates",
+    "LAW": "Laws / Statutes",
+    "EVENT": "Events",
+    "NORP": "Groups / Nationalities",
+    "MONEY": "Monetary Values",
+    "FAC": "Facilities / Institutes",
+    "CARDINAL": "Numbers",
+    "ORDINAL": "Ordinal Numbers",
+    "QUANTITY": "Quantities",
+    "PRODUCT": "Products",
+    "WORK_OF_ART": "Works / Titles",
+    "LANGUAGE": "Languages",
+    "TIME": "Times",
+    "PERCENT": "Percentages",
+}
+
+
+import re
+
+def _ultra_normalize(text: str) -> str:
+    """Normalize text by removing all special chars, extra whitespace, and lowercasing."""
+    # Replace all non-alphanumeric with space
+    text = re.sub(r'[^a-zA-Z0-9\s]', ' ', text)
+    # Collapse multiple spaces
+    return " ".join(text.lower().split()).strip()
+
+def _find_shared_blocks(text1: str, text2: str) -> list[str]:
+    """
+    Find shared sentences using a fuzzy token-overlap approach.
+    Handles differences in punctuation, dashes, and whitespace across PDF versions.
+    """
+    try:
+        nlp = _get_spacy_nlp()
+        if not nlp:
+            return []
+
+        # Process reasonable text chunks for NLP
+        doc1 = nlp(text1[:60000]) if len(text1) > 60000 else nlp(text1)
+        doc2 = nlp(text2[:60000]) if len(text2) > 60000 else nlp(text2)
+
+        # Helper to get sequence of content-rich tokens
+        def get_content_tokens(sent_text):
+            # We don't use full spacy objects here to keep it fast
+            words = _ultra_normalize(sent_text).split()
+            # Return words that aren't trivial (too short or just generic joining words)
+            # We filter out very short words, but keep those that might be part of an acronym
+            return [w for w in words if len(w) > 1]
+
+        # Break into sentences
+        sents1 = [s.text for s in doc1.sents if len(s.text.strip()) > 10]
+        sents2 = [s.text for s in doc2.sents if len(s.text.strip()) > 10]
+
+        # ADDITION: Add raw lines as "pseudo-sentences" to catch headers that SpaCy might merge
+        lines1 = [line.strip() for line in text1[:10000].split('\n') if len(line.strip()) > 15]
+        lines2 = [line.strip() for line in text2[:10000].split('\n') if len(line.strip()) > 15]
+        
+        all_s1 = sents1 + lines1
+        all_s2 = sents2 + lines2
+
+        shared = []
+        
+        # Pre-calculate content sets for doc2 to avoid redundant work
+        sent2_data = []
+        for s2 in all_s2:
+            tokens = set(get_content_tokens(s2))
+            if len(tokens) >= 3: # Lower threshold for headers
+                sent2_data.append({"text": s2, "tokens": tokens})
+
+        for s1 in all_s1:
+            tokens1 = set(get_content_tokens(s1))
+            if len(tokens1) < 3:
+                continue
+
+            best_match = None
+            max_sim = 0.0
+
+            for s2_item in sent2_data:
+                tokens2 = s2_item["tokens"]
+                
+                # Jaccard Similarity: Intersection / Union
+                intersection = tokens1.intersection(tokens2)
+                if not intersection:
+                    continue
+                
+                union = tokens1.union(tokens2)
+                sim = len(intersection) / len(union)
+
+                if sim > max_sim:
+                    max_sim = sim
+                    best_match = s2_item["text"]
+                
+                # Early exit if we have a very strong match
+                if sim >= 0.95:
+                    break
+            
+            # If similarity threshold met (70% for broader matching), count as shared
+            if max_sim >= 0.70:
+                cleaned_match = " ".join(best_match.split()).strip()
+                if cleaned_match not in shared:
+                    shared.append(cleaned_match)
+        
+        return shared
+    except Exception as e:
+        logger.error(f"Error in fuzzy shared block detection: {str(e)}")
+        return []
+
+
+def compare_documents(text1: str, text2: str, language: str = "en") -> dict:
+    """
+    Compare two documents by extracting structured entities, 
+    shared content blocks, and topical similarities.
+    """
+    try:
+        # Step 1: Summarize both documents
+        sum1 = summarize_text(text1, length="medium")["summary"]
+        sum2 = summarize_text(text2, length="medium")["summary"]
+
+        # Step 2: Extract entities grouped by type from both docs
+        ents1 = _extract_entities_by_type(text1)
+        ents2 = _extract_entities_by_type(text2)
+
+        # Step 3: Find identical blocks (the institutional names/Degree requirements)
+        shared_blocks = _find_shared_blocks(text1, text2)
+
+        # Step 4: Compute similarities and differences per entity type
+        # (case-insensitive comparison using lowercase keys)
+        all_types = set(list(ents1.keys()) + list(ents2.keys()))
+
+        similarities = []
+        differences = []
+
+        for etype in sorted(all_types):
+            label = _ENTITY_LABELS.get(etype, etype)
+            dict1 = ents1.get(etype, {})  # {lowercase: display}
+            dict2 = ents2.get(etype, {})
+
+            keys1 = set(dict1.keys())
+            keys2 = set(dict2.keys())
+
+            shared_keys = keys1 & keys2
+            only1_keys = keys1 - keys2
+            only2_keys = keys2 - keys1
+
+            if shared_keys:
+                similarities.append({
+                    "category": label,
+                    "items": sorted([dict1[k] for k in shared_keys])
+                })
+
+            if only1_keys or only2_keys:
+                differences.append({
+                    "category": label,
+                    "only_in_doc1": sorted([dict1[k] for k in only1_keys]),
+                    "only_in_doc2": sorted([dict2[k] for k in only2_keys])
+                })
+
+        # Step 4: Also extract shared topic keywords (frequency-based)
+        k1 = extract_keywords(text1, top_n=20)
+        k2 = extract_keywords(text2, top_n=20)
+        topic_set1 = {k["keyword"].lower() for k in k1}
+        topic_set2 = {k["keyword"].lower() for k in k2}
+        shared_topics = sorted(topic_set1 & topic_set2)
+        unique_topics_1 = sorted(topic_set1 - topic_set2)
+        unique_topics_2 = sorted(topic_set2 - topic_set1)
+
+        # Step 5: Build comparison summary
+        comparison_summary = (
+            f"Document 1 Summary:\n{sum1}\n\n"
+            f"Document 2 Summary:\n{sum2}"
+        )
+
+        # Step 6: Translate if needed
+        if language != "en":
+            try:
+                translator = GoogleTranslator(source='en', target=language)
+                if len(comparison_summary) > 4000:
+                    chunks = _split_into_chunks(comparison_summary, 4000)
+                    translated_chunks = [translator.translate(chunk) for chunk in chunks]
+                    comparison_summary = " ".join(translated_chunks)
+                else:
+                    comparison_summary = translator.translate(comparison_summary)
+            except Exception as e:
+                logger.error(f"Outbound comparison translation failed: {str(e)}")
+
+        return {
+            "document_1_summary": sum1,
+            "document_2_summary": sum2,
+            "comparison_summary": comparison_summary,
+            "similarities": similarities,
+            "differences": differences,
+            "shared_topics": shared_topics,
+            "shared_blocks": shared_blocks,
+            "unique_topics_doc1": unique_topics_1,
+            "unique_topics_doc2": unique_topics_2,
+            "shared_entities": shared_topics  # backward compat
+        }
+    except Exception as e:
+        logger.error(f"Comparison pipeline error: {str(e)}")
+        raise e

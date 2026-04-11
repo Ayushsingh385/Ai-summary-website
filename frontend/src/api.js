@@ -54,8 +54,8 @@ export const uploadPdf = async (file) => {
   return response.data;
 };
 
-export const summarizeText = async (text, length) => {
-  const response = await api.post('/summarize', { text, length });
+export const summarizeText = async (text, length, language = "en") => {
+  const response = await api.post('/summarize', { text, length, language });
   return response.data;
 };
 
@@ -64,16 +64,17 @@ export const extractKeywords = async (text) => {
   return response.data;
 };
 
-export const downloadSummary = async (summary, originalWordCount, summaryWordCount, format) => {
+export const downloadSummary = async (summary, originalWordCount, summaryWordCount, format, keywords = []) => {
   const response = await api.post('/download', {
     summary,
     original_word_count: originalWordCount,
     summary_word_count: summaryWordCount,
-    format
+    format,
+    keywords
   }, {
     responseType: 'blob', // Important for file downloads
   });
-  
+
   // Create a download link and trigger it
   const url = window.URL.createObjectURL(new Blob([response.data]));
   const link = document.createElement('a');
@@ -81,7 +82,7 @@ export const downloadSummary = async (summary, originalWordCount, summaryWordCou
   link.setAttribute('download', `summary.${format}`);
   document.body.appendChild(link);
   link.click();
-  
+
   // Cleanup
   link.parentNode.removeChild(link);
   window.URL.revokeObjectURL(url);
@@ -129,5 +130,35 @@ export const searchCases = async (query) => {
 
 export const deleteCase = async (caseId) => {
   const response = await api.delete(`/delete_case/${caseId}`);
+  return response.data;
+};
+
+export const compareDocuments = async (text1, text2, language = "en") => {
+  const response = await api.post('/compare', { text1, text2, language });
+  return response.data;
+};
+
+export const saveComparison = async (filename1, filename2, text1, text2, result) => {
+  const response = await api.post('/save_comparison', {
+    filename1,
+    filename2,
+    text1,
+    text2,
+    comparison_summary: result.comparison_summary,
+    shared_entities: result.shared_entities || [],
+    similarities: result.similarities || [],
+    differences: result.differences || [],
+    shared_blocks: result.shared_blocks || []
+  });
+  return response.data;
+};
+
+export const fetchComparisonHistory = async () => {
+  const response = await api.get('/history/comparisons');
+  return response.data;
+};
+
+export const fetchComparisonDetail = async (comparisonId) => {
+  const response = await api.get(`/history/comparisons/${comparisonId}`);
   return response.data;
 };

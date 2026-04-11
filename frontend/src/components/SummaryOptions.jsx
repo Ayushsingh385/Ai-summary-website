@@ -1,6 +1,6 @@
 import { FiCoffee, FiBookOpen, FiFileText } from 'react-icons/fi';
 
-const SummaryOptions = ({ selectedLength, onSelect }) => {
+const SummaryOptions = ({ selectedLength, onSelect, selectedLanguage, onLanguageChange }) => {
   const options = [
     {
       id: 'short',
@@ -23,18 +23,51 @@ const SummaryOptions = ({ selectedLength, onSelect }) => {
   ];
 
   return (
-    <div className="options-container fade-in">
-      {options.map((opt) => (
-        <div
-          key={opt.id}
-          className={`option-card ${selectedLength === opt.id ? 'selected' : ''}`}
-          onClick={() => onSelect(opt.id)}
-        >
-          <div style={{ marginBottom: '1rem' }}>{opt.icon}</div>
-          <h4>{opt.title}</h4>
-          <p>{opt.desc}</p>
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem', width: '100%' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'var(--bg-card)', padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
+          <label htmlFor="language-select" style={{ fontWeight: '500', color: 'var(--text-main)' }}>Summary Language:</label>
+          <select 
+            id="language-select" 
+            value={selectedLanguage} 
+            onChange={(e) => onLanguageChange(e.target.value)}
+            style={{ 
+              background: 'var(--bg-dark)', 
+              color: 'var(--text-main)', 
+              border: '1px solid var(--panel-border)', 
+              padding: '0.4rem 0.8rem', 
+              borderRadius: '4px',
+              outline: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="en">English</option>
+            <option value="hi">Hindi</option>
+            <option value="mr">Marathi</option>
+            <option value="bn">Bengali</option>
+            <option value="ta">Tamil</option>
+            <option value="te">Telugu</option>
+            <option value="gu">Gujarati</option>
+            <option value="kn">Kannada</option>
+            <option value="ml">Malayalam</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+          </select>
         </div>
-      ))}
+      </div>
+      <div className="options-container fade-in">
+        {options.map((opt) => (
+          <div
+            key={opt.id}
+            className={`option-card ${selectedLength === opt.id ? 'selected' : ''}`}
+            onClick={() => onSelect(opt.id)}
+          >
+            <div style={{ marginBottom: '1rem' }}>{opt.icon}</div>
+            <h4>{opt.title}</h4>
+            <p>{opt.desc}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };

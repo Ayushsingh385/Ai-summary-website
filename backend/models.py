@@ -21,3 +21,18 @@ class User(Base):
     employee_id = Column(String)
     email_id = Column(String, unique=True, index=True)
     hashed_password = Column(String)
+
+class CaseComparison(Base):
+    __tablename__ = "case_comparisons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    filename1 = Column(String)
+    filename2 = Column(String)
+    text1 = Column(Text)
+    text2 = Column(Text)
+    comparison_summary = Column(Text)
+    shared_entities = Column(JSON)
+    similarities = Column(JSON, nullable=True)
+    differences = Column(JSON, nullable=True)
+    shared_blocks = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

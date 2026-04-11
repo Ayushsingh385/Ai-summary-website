@@ -3,20 +3,25 @@ Summarize Router — API endpoints for PDF upload, summarization,
 keyword extraction, and summary download.
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Any, Dict
 
 from services.pdf_service import validate_pdf, extract_text_from_pdf
-from services.nlp_service import summarize_text, extract_keywords, compute_text_stats
-from services.download_service import generate_summary_pdf, generate_summary_txt, generate_original_pdf
+from services.nlp_service import summarize_text, extract_keywords, compute_text_stats, extract_citations, compare_documents
+from services.download_service import generate_summary_pdf, generate_summary_txt, generate_summary_docx, generate_original_pdf
 from services.vector_service import vector_service
+from services.difference_engine import compare_documents_semantic, get_comparison_summary
 
 from database import get_db
-from models import CaseDocument
+from models import CaseDocument, CaseComparison
 from sqlalchemy.orm import Session
 from fastapi import Depends
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/api", tags=["Summarizer"])
 
@@ -29,6 +34,7 @@ class SummarizeRequest(BaseModel):
     """Request body for the /summarize endpoint."""
     text: str
     length: Optional[str] = "medium"  # short | medium | long
+    language: Optional[str] = "en"
 
 
 class KeywordsRequest(BaseModel):
@@ -36,13 +42,21 @@ class KeywordsRequest(BaseModel):
     text: str
     top_n: Optional[int] = 15
 
+class CompareRequest(BaseModel):
+    """Request body for the /compare endpoint."""
+    text1: str
+    text2: str
+    language: Optional[str] = "en"
+
 
 class DownloadRequest(BaseModel):
     """Request body for the /download endpoint."""
     summary: str
     original_word_count: int = 0
     summary_word_count: int = 0
-    format: str = "txt"  # pdf | txt
+    format: str = "txt"  # pdf | txt | docx
+    filename: Optional[str] = "summary"
+    keywords: Optional[list] = []
 
 
 class DownloadOriginalRequest(BaseModel):
@@ -52,12 +66,25 @@ class DownloadOriginalRequest(BaseModel):
 
 
 class SaveCaseRequest(BaseModel):
-    """Request body for the /save_case endpoint."""
+    """Request body for saving a case locally."""
     filename: str
     original_text: str
     summary_text: str
     keywords: list
     stats: dict
+
+
+class SaveComparisonRequest(BaseModel):
+    """Request body for saving a document comparison."""
+    filename1: str
+    filename2: str
+    text1: str
+    text2: str
+    comparison_summary: str
+    shared_entities: List[Any]
+    similarities: Optional[List[Any]] = []
+    differences: Optional[List[Any]] = []
+    shared_blocks: Optional[List[Any]] = []
 
 
 class SearchRequest(BaseModel):
@@ -66,13 +93,55 @@ class SearchRequest(BaseModel):
     top_k: Optional[int] = 1
 
 
+class SemanticCompareRequest(BaseModel):
+    """Request body for the /compare_semantic endpoint."""
+    text1: str
+    text2: str
+
+
 # ──────────────────────────────────────────────────────────────
 # Endpoints
 # ──────────────────────────────────────────────────────────────
 
+@router.post("/compare")
+@limiter.limit("10/minute")
+async def compare_documents(request: Request, body_request: CompareRequest):
+    """
+    Compare two Zilla Parishad/administrative documents using semantic embeddings.
+    Primary comparison engine for the application.
+    """
+    if len(body_request.text1.strip()) < 50 or len(body_request.text2.strip()) < 50:
+        raise HTTPException(
+            status_code=400,
+            detail="Both texts must be at least 50 characters."
+        )
+
+    try:
+        # Use the specialized semantic engine
+        result = compare_documents_semantic(body_request.text1, body_request.text2, debug=True)
+        
+        # Add human-readable summary
+        summary = get_comparison_summary(result)
+        result["comparison_summary"] = summary
+        
+        # Ensure backward compatibility with existing frontend expectations if any
+        # (Though we are primarily improving the results)
+        result["document_1_summary"] = summarize_text(body_request.text1, "short", body_request.language)["summary"]
+        result["document_2_summary"] = summarize_text(body_request.text2, "short", body_request.language)["summary"]
+        result["shared_entities"] = result.get("stats", {}).get("identical_count", 0) # rough proxy
+        
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Comparison failed: {str(e)}"
+        )
+
+
 
 @router.post("/upload")
-async def upload_pdf(file: UploadFile = File(...)):
+@limiter.limit("20/minute")
+async def upload_pdf(request: Request, file: UploadFile = File(...)):
     """
     Upload a PDF file and extract its text content.
 
@@ -93,7 +162,8 @@ async def upload_pdf(file: UploadFile = File(...)):
 
 
 @router.post("/summarize")
-async def summarize(request: SummarizeRequest):
+@limiter.limit("10/minute")
+async def summarize(request: Request, body_request: SummarizeRequest):
     """
     Summarize the provided text using BART NLP model.
 
@@ -105,20 +175,21 @@ async def summarize(request: SummarizeRequest):
         - Generated summary
         - Word counts and compression ratio
     """
-    if not request.text or len(request.text.strip()) < 50:
+    if not body_request.text or len(body_request.text.strip()) < 50:
         raise HTTPException(
             status_code=400,
             detail="Text is too short to summarize. Please provide at least 50 characters."
         )
 
-    result = summarize_text(request.text, request.length)
-    stats = compute_text_stats(request.text)
+    result = summarize_text(body_request.text, body_request.length, body_request.language)
+    stats = compute_text_stats(body_request.text)
     result["original_stats"] = stats
     return result
 
 
 @router.post("/keywords")
-async def keywords(request: KeywordsRequest):
+@limiter.limit("20/minute")
+async def keywords(request: Request, body_request: KeywordsRequest):
     """
     Extract keywords from the provided text.
 
@@ -129,35 +200,85 @@ async def keywords(request: KeywordsRequest):
     Returns:
         List of keywords with relevance scores.
     """
-    if not request.text or len(request.text.strip()) < 20:
+    if not body_request.text or len(body_request.text.strip()) < 20:
         raise HTTPException(
             status_code=400,
             detail="Text is too short for keyword extraction."
         )
 
-    result = extract_keywords(request.text, request.top_n)
-    return {"keywords": result}
+    result = extract_keywords(body_request.text, body_request.top_n)
+    citations = extract_citations(body_request.text)
+    return {"keywords": result, "citations": citations}
 
+
+# Consolidated with /api/compare above
+
+
+@router.post("/compare_semantic")
+@limiter.limit("10/minute")
+async def compare_semantic(request: Request, body_request: SemanticCompareRequest):
+    """
+    Semantic document comparison using sentence embeddings.
+
+    Compares two documents at the sentence/clause level using cosine similarity
+    on embeddings from sentence-transformers/all-MiniLM-L6-v2.
+
+    Classification thresholds:
+        - similarity >= 0.90 -> Identical (unchanged)
+        - 0.75 <= similarity < 0.90 -> Modified (changed)
+        - similarity < 0.75 -> Different (added/removed)
+
+    Returns:
+        - identical: List of unchanged segments
+        - modified: List of {original, updated, similarity} objects
+        - added: List of new segments in document B
+        - removed: List of deleted segments from document A
+        - stats: Summary statistics
+    """
+    if len(body_request.text1.strip()) < 50 or len(body_request.text2.strip()) < 50:
+        raise HTTPException(
+            status_code=400,
+            detail="Both texts must be at least 50 characters."
+        )
+
+    try:
+        result = compare_documents_semantic(body_request.text1, body_request.text2)
+        summary = get_comparison_summary(result)
+        result["human_readable_summary"] = summary
+        return result
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Embedding model not available: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Comparison failed: {str(e)}"
+        )
 
 @router.post("/download")
-async def download_summary(request: DownloadRequest):
+@limiter.limit("20/minute")
+async def download_summary(request: Request, body_request: DownloadRequest):
     """
-    Download the summary as a PDF or TXT file.
+    Download the summary as a PDF, TXT, or DOCX file.
 
     Request body:
         - summary:             The summary text
         - original_word_count: Word count of the original text
         - summary_word_count:  Word count of the summary
-        - format:              'pdf' or 'txt'
+        - format:              'pdf', 'txt', or 'docx'
+        - filename:            Optional filename (without extension)
+        - keywords:            Optional list of keywords for DOCX
 
     Returns:
         File download response.
     """
-    if request.format == "pdf":
+    if body_request.format == "pdf":
         pdf_bytes = generate_summary_pdf(
-            request.summary,
-            request.original_word_count,
-            request.summary_word_count,
+            body_request.summary,
+            body_request.original_word_count,
+            body_request.summary_word_count,
         )
         return Response(
             content=pdf_bytes,
@@ -165,11 +286,11 @@ async def download_summary(request: DownloadRequest):
             headers={"Content-Disposition": "attachment; filename=summary.pdf"}
         )
 
-    elif request.format == "txt":
+    elif body_request.format == "txt":
         txt_content = generate_summary_txt(
-            request.summary,
-            request.original_word_count,
-            request.summary_word_count,
+            body_request.summary,
+            body_request.original_word_count,
+            body_request.summary_word_count,
         )
         return Response(
             content=txt_content.encode("utf-8"),
@@ -177,10 +298,24 @@ async def download_summary(request: DownloadRequest):
             headers={"Content-Disposition": "attachment; filename=summary.txt"}
         )
 
+    elif body_request.format == "docx":
+        docx_bytes = generate_summary_docx(
+            body_request.summary,
+            body_request.original_word_count,
+            body_request.summary_word_count,
+            filename=body_request.filename,
+            keywords=body_request.keywords,
+        )
+        return Response(
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": "attachment; filename=summary.docx"}
+        )
+
     else:
         raise HTTPException(
             status_code=400,
-            detail="Invalid format. Use 'pdf' or 'txt'."
+            detail="Invalid format. Use 'pdf', 'txt', or 'docx'."
         )
 
 
@@ -297,3 +432,60 @@ async def delete_case(case_id: int, db: Session = Depends(get_db)):
     
     return {"message": f"Case {case_id} deleted successfully"}
 
+
+@router.post("/save_comparison")
+async def save_comparison(request: SaveComparisonRequest, db: Session = Depends(get_db)):
+    """
+    Save a document comparison to the database.
+    """
+    new_comparison = CaseComparison(
+        filename1=request.filename1,
+        filename2=request.filename2,
+        text1=request.text1,
+        text2=request.text2,
+        comparison_summary=request.comparison_summary,
+        shared_entities=request.shared_entities,
+        similarities=request.similarities,
+        differences=request.differences,
+        shared_blocks=request.shared_blocks
+    )
+    db.add(new_comparison)
+    db.commit()
+    db.refresh(new_comparison)
+    
+    return {"message": "Comparison saved successfully", "comparison_id": new_comparison.id}
+
+
+@router.get("/history/comparisons")
+async def get_comparison_history(db: Session = Depends(get_db)):
+    """
+    Retrieve all saved comparisons.
+    """
+    comparisons = db.query(
+        CaseComparison.id, 
+        CaseComparison.filename1,
+        CaseComparison.filename2,
+        CaseComparison.created_at
+    ).order_by(CaseComparison.created_at.desc()).all()
+    
+    return [
+        {
+            "id": c.id,
+            "filename1": c.filename1,
+            "filename2": c.filename2,
+            "created_at": c.created_at
+        } 
+        for c in comparisons
+    ]
+
+
+@router.get("/history/comparisons/{comparison_id}")
+async def get_comparison_detail(comparison_id: int, db: Session = Depends(get_db)):
+    """
+    Retrieve a specific comparison by ID.
+    """
+    comparison = db.query(CaseComparison).filter(CaseComparison.id == comparison_id).first()
+    if not comparison:
+        raise HTTPException(status_code=404, detail="Comparison not found")
+        
+    return comparison

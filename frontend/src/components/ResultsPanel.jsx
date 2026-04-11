@@ -1,6 +1,6 @@
 import { FiClock, FiFile, FiTag } from 'react-icons/fi';
 
-const ResultsPanel = ({ originalText, summaryResult, keywords, activeTab, setActiveTab }) => {
+const ResultsPanel = ({ originalText, summaryResult, keywords, citations, activeTab, setActiveTab }) => {
 
   return (
     <div className="glass-panel fade-in" style={{ marginTop: '2rem', padding: '1rem' }}>
@@ -79,6 +79,29 @@ const ResultsPanel = ({ originalText, summaryResult, keywords, activeTab, setAct
                     <span key={i} className="keyword-chip">
                       {kw.keyword}
                     </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Citations */}
+            {citations && citations.length > 0 && (
+              <div className="citations-container fade-in">
+                <h4 style={{ color: 'var(--text-main)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <FiFile /> Citations Identified
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {citations.map((cite, i) => (
+                    <div key={i} style={{ padding: '0.5rem', background: 'var(--bg-card)', borderRadius: '4px', border: '1px solid var(--panel-border)' }}>
+                      {cite.link ? (
+                        <a href={cite.link} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 'bold', color: 'var(--primary)', textDecoration: 'none' }}>
+                          {cite.citation}
+                        </a>
+                      ) : (
+                        <span style={{ fontWeight: 'bold', color: 'var(--primary)' }}>{cite.citation}</span>
+                      )}
+                      <span style={{ marginLeft: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>({cite.type})</span>
+                    </div>
                   ))}
                 </div>
               </div>
