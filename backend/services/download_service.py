@@ -1,12 +1,27 @@
 """
 Download Service — Generate downloadable summary files (PDF, TXT, and DOCX).
 Uses fpdf2 for PDF generation and python-docx for Word documents.
+Supports legal document templates via legal_templates module.
 """
 
 from fpdf import FPDF
 from io import BytesIO
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+from services.legal_templates import (
+    apply_template,
+    add_statistics_section,
+    add_body_text,
+    add_keywords_section,
+    add_comparison_tables,
+    add_footer_note,
+    _add_section_heading,
+    _styled_paragraph,
+    _add_horizontal_line,
+    COLORS,
+)
 
 
 def generate_summary_pdf(
@@ -93,56 +108,97 @@ def generate_summary_docx(
     summary_word_count: int,
     filename: str = "summary",
     keywords: list = None,
+    template: str = None,
 ) -> bytes:
     """
     Generate a Word document containing the summary.
+    Supports optional legal template: 'zp_official', 'court_order', 'general'.
     Returns raw DOCX bytes.
     """
     doc = Document()
 
-    # Title
-    title = doc.add_heading("Case Summary Report", level=0)
+    if template:
+        # ── Templated legal document ──
+        apply_template(doc, template, title="Case Summary Report")
 
-    # Metadata section
-    doc.add_paragraph()
-    meta_para = doc.add_paragraph()
-    meta_para.add_run("Original: ").bold = True
-    meta_para.add_run(f"{original_word_count} words\n")
-    meta_para.add_run("Summary: ").bold = True
-    meta_para.add_run(f"{summary_word_count} words\n")
-    compression = round((1 - summary_word_count / max(original_word_count, 1)) * 100, 1)
-    meta_para.add_run("Compression: ").bold = True
-    meta_para.add_run(f"{compression}%")
+        # Statistics
+        compression = round((1 - summary_word_count / max(original_word_count, 1)) * 100, 1)
+        add_statistics_section(doc, [
+            ("Original Words", f"{original_word_count:,}"),
+            ("Summary Words", f"{summary_word_count:,}"),
+            ("Compression", f"{compression}%"),
+        ], template_name=template)
 
-    # Document info
-    if filename and filename != "summary":
+        # Source document info
+        if filename and filename != "summary":
+            _styled_paragraph(
+                doc, f"Source Document: {filename}",
+                font_name="Arial", font_size=9, italic=True,
+                color=COLORS["muted"],
+                space_after=Pt(12),
+            )
+
+        # Summary body
+        _add_section_heading(doc, "Summary", level=2,
+                             color=COLORS.get({
+                                 "zp_official": "zp_primary",
+                                 "court_order": "court_primary",
+                                 "general": "gen_primary",
+                             }.get(template, "gen_primary"), COLORS["gen_primary"]))
+        add_body_text(doc, summary, template_name=template)
+
+        # Keywords
+        if keywords:
+            add_keywords_section(doc, keywords, template_name=template)
+
+        # Footer
+        add_footer_note(doc, template_name=template)
+
+    else:
+        # ── Original basic format (backward compatible) ──
+        # Title
+        title = doc.add_heading("Case Summary Report", level=0)
+
+        # Metadata section
         doc.add_paragraph()
-        info_para = doc.add_paragraph()
-        info_para.add_run("Source Document: ").bold = True
-        info_para.add_run(filename)
+        meta_para = doc.add_paragraph()
+        meta_para.add_run("Original: ").bold = True
+        meta_para.add_run(f"{original_word_count} words\n")
+        meta_para.add_run("Summary: ").bold = True
+        meta_para.add_run(f"{summary_word_count} words\n")
+        compression = round((1 - summary_word_count / max(original_word_count, 1)) * 100, 1)
+        meta_para.add_run("Compression: ").bold = True
+        meta_para.add_run(f"{compression}%")
 
-    # Summary section
-    doc.add_paragraph()
-    doc.add_heading("Summary", level=1)
-    doc.add_paragraph(summary)
+        # Document info
+        if filename and filename != "summary":
+            doc.add_paragraph()
+            info_para = doc.add_paragraph()
+            info_para.add_run("Source Document: ").bold = True
+            info_para.add_run(filename)
 
-    # Keywords section (if provided)
-    if keywords and len(keywords) > 0:
+        # Summary section
         doc.add_paragraph()
-        doc.add_heading("Keywords", level=1)
-        keywords_para = doc.add_paragraph()
-        for i, kw in enumerate(keywords[:15]):
-            keyword_text = kw.get("keyword", kw) if isinstance(kw, dict) else kw
-            keyword_type = kw.get("type", "keyword") if isinstance(kw, dict) else "keyword"
-            keywords_para.add_run(f"• {keyword_text}")
-            keywords_para.add_run(f" ({keyword_type})")
-            if i < len(keywords[:15]) - 1:
-                keywords_para.add_run("\n")
+        doc.add_heading("Summary", level=1)
+        doc.add_paragraph(summary)
 
-    # Footer
-    doc.add_paragraph()
-    footer_para = doc.add_paragraph()
-    footer_para.add_run("Generated by PDF Summarizer - powered by BART NLP").italic = True
+        # Keywords section (if provided)
+        if keywords and len(keywords) > 0:
+            doc.add_paragraph()
+            doc.add_heading("Keywords", level=1)
+            keywords_para = doc.add_paragraph()
+            for i, kw in enumerate(keywords[:15]):
+                keyword_text = kw.get("keyword", kw) if isinstance(kw, dict) else kw
+                keyword_type = kw.get("type", "keyword") if isinstance(kw, dict) else "keyword"
+                keywords_para.add_run(f"• {keyword_text}")
+                keywords_para.add_run(f" ({keyword_type})")
+                if i < len(keywords[:15]) - 1:
+                    keywords_para.add_run("\n")
+
+        # Footer
+        doc.add_paragraph()
+        footer_para = doc.add_paragraph()
+        footer_para.add_run("Generated by PDF Summarizer - powered by BART NLP").italic = True
 
     # Return bytes
     buffer = BytesIO()
@@ -199,3 +255,136 @@ def generate_original_pdf(
     pdf.cell(0, 6, "Exported from Zilla Parishad Summarizer", ln=True, align="C")
 
     return bytes(pdf.output())
+
+
+def generate_original_docx(
+    original_text: str,
+    original_word_count: int,
+    filename: str = "original_case",
+    template: str = None,
+) -> bytes:
+    """
+    Generate a Word document containing the full original case text.
+    Supports optional legal template.
+    Returns raw DOCX bytes.
+    """
+    doc = Document()
+
+    if template:
+        apply_template(doc, template, title="Original Case Document")
+
+        add_statistics_section(doc, [
+            ("Word Count", f"{original_word_count:,}"),
+        ], template_name=template)
+
+        if filename and filename != "original_case":
+            _styled_paragraph(
+                doc, f"Source Document: {filename}",
+                font_name="Arial", font_size=9, italic=True,
+                color=COLORS["muted"],
+                space_after=Pt(12),
+            )
+
+        _add_section_heading(doc, "Full Document Text", level=2,
+                             color=COLORS.get({
+                                 "zp_official": "zp_primary",
+                                 "court_order": "court_primary",
+                                 "general": "gen_primary",
+                             }.get(template, "gen_primary"), COLORS["gen_primary"]))
+        add_body_text(doc, original_text, template_name=template)
+        add_footer_note(doc, template_name=template)
+
+    else:
+        doc.add_heading("Original Case Document", level=0)
+        doc.add_paragraph()
+        meta = doc.add_paragraph()
+        meta.add_run("Word Count: ").bold = True
+        meta.add_run(f"{original_word_count}")
+
+        if filename and filename != "original_case":
+            doc.add_paragraph()
+            info = doc.add_paragraph()
+            info.add_run("Source: ").bold = True
+            info.add_run(filename)
+
+        doc.add_paragraph()
+        doc.add_heading("Document Text", level=1)
+        doc.add_paragraph(original_text)
+
+        doc.add_paragraph()
+        footer = doc.add_paragraph()
+        footer.add_run("Exported from Zilla Parishad Summarizer").italic = True
+
+    buffer = BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
+
+
+def generate_comparison_docx(
+    filename1: str,
+    filename2: str,
+    comparison_summary: str,
+    similarities: list = None,
+    differences: list = None,
+    shared_blocks: list = None,
+    shared_topics: list = None,
+    unique_topics_doc1: list = None,
+    unique_topics_doc2: list = None,
+    template: str = None,
+) -> bytes:
+    """
+    Generate a Word document containing the full comparison report.
+    Supports optional legal template.
+    Returns raw DOCX bytes.
+    """
+    doc = Document()
+
+    if template:
+        apply_template(doc, template, title="Document Comparison Report")
+    else:
+        doc.add_heading("Document Comparison Report", level=0)
+        doc.add_paragraph()
+
+    # File info
+    _styled_paragraph(
+        doc, f"Document 1:  {filename1}",
+        font_name="Arial", font_size=10, bold=True,
+        color=COLORS["body_text"],
+        space_after=Pt(2),
+    )
+    _styled_paragraph(
+        doc, f"Document 2:  {filename2}",
+        font_name="Arial", font_size=10, bold=True,
+        color=COLORS["body_text"],
+        space_after=Pt(12),
+    )
+
+    # AI Summary
+    primary = COLORS.get({
+        "zp_official": "zp_primary",
+        "court_order": "court_primary",
+        "general": "gen_primary",
+    }.get(template, "gen_primary"), COLORS["gen_primary"])
+
+    _add_section_heading(doc, "AI Comparison Summary", level=2, color=primary)
+    add_body_text(doc, comparison_summary, template_name=template)
+
+    # Comparison tables
+    add_comparison_tables(
+        doc,
+        similarities=similarities or [],
+        differences=differences or [],
+        shared_blocks=shared_blocks or [],
+        shared_topics=shared_topics or [],
+        unique_doc1=unique_topics_doc1 or [],
+        unique_doc2=unique_topics_doc2 or [],
+        template_name=template,
+    )
+
+    # Footer
+    add_footer_note(doc, note="Comparison generated by Zilla Parishad AI Document Processor",
+                     template_name=template)
+
+    buffer = BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()

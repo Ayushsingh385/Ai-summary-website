@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { fetchHistory, searchCases, deleteCase, fetchComparisonHistory } from '../api';
+import { fetchHistory, searchCases, fetchComparisonHistory } from '../api';
 import './HistorySidebar.css';
 
 const HistorySidebar = ({ onSelectCase, onSelectComparison, isOpen, toggleSidebar }) => {
@@ -68,18 +68,7 @@ const HistorySidebar = ({ onSelectCase, onSelectComparison, isOpen, toggleSideba
     }
   };
 
-  const handleDelete = async (e, caseId) => {
-    e.stopPropagation(); // prevent selecting the case
-    if (!window.confirm("Are you sure you want to delete this case?")) return;
-    
-    try {
-      await deleteCase(caseId);
-      // Remove from UI immediately
-      setHistory(prev => prev.filter(c => c.id !== caseId));
-    } catch (err) {
-      alert("Failed to delete case.");
-    }
-  };
+
 
   return (
     <div className={`history-sidebar ${isOpen ? 'open' : ''}`}>
@@ -137,13 +126,6 @@ const HistorySidebar = ({ onSelectCase, onSelectComparison, isOpen, toggleSideba
                     )}
                   </div>
                 </div>
-                <button 
-                  className="delete-btn" 
-                  onClick={(e) => handleDelete(e, item.id)}
-                  title="Delete Case"
-                >
-                  🗑️
-                </button>
               </div>
             ))
           )

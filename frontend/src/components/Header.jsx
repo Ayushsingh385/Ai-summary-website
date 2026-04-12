@@ -1,10 +1,17 @@
 import { useState } from 'react';
 import { FiBriefcase, FiClock, FiLogOut, FiUser, FiSun, FiMoon } from 'react-icons/fi';
 
-const Header = ({ onOpenHistory, onLogout, userProfile, theme, toggleTheme }) => {
+const Header = ({ onOpenHistory, onLogout, userProfile, theme, toggleTheme, isSidebarOpen }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   return (
-    <header className="fade-in" style={{ textAlign: 'center', marginBottom: '3rem', position: 'relative', zIndex: 1000 }}>
+    <header className="fade-in" style={{ 
+      textAlign: 'center', 
+      marginBottom: '3rem', 
+      position: 'relative', 
+      zIndex: 1000,
+      opacity: 1,
+      transition: 'all 0.3s ease',
+    }}>
       
       {/* Top Left User Menu */}
       {userProfile && (

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { uploadPdf, compareDocuments, saveComparison } from '../api';
+import { uploadPdf, compareDocuments, saveComparison, downloadComparisonReport } from '../api';
 import FileUpload from './FileUpload';
 import LoadingSpinner from './LoadingSpinner';
-import { FiSave, FiCheckCircle, FiXCircle, FiUsers, FiCalendar, FiMapPin, FiBookOpen } from 'react-icons/fi';
+import { FiSave, FiCheckCircle, FiXCircle, FiUsers, FiCalendar, FiMapPin, FiBookOpen, FiDownload, FiFileText, FiChevronDown } from 'react-icons/fi';
 
 const CATEGORY_ICONS = {
   "Persons / Parties": <FiUsers />,
@@ -11,6 +11,13 @@ const CATEGORY_ICONS = {
   "Locations": <FiMapPin />,
   "Laws / Statutes": <FiBookOpen />,
 };
+
+const TEMPLATES = [
+  { value: '', label: '📄 Plain (Default)' },
+  { value: 'zp_official', label: '🏛️ Zilla Parishad Official' },
+  { value: 'court_order', label: '⚖️ Court Order Format' },
+  { value: 'general', label: '📋 General Administrative' },
+];
 
 const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
   const [text1, setText1] = useState('');
@@ -23,6 +30,11 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
   
   const [comparisonResult, setComparisonResult] = useState(null);
   const [isSaved, setIsSaved] = useState(false);
+
+  // Export state
+  const [selectedTemplate, setSelectedTemplate] = useState('');
+  const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     if (initialHistoricalComparison) {
@@ -99,6 +111,31 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
     }
   };
 
+  const handleExportComparison = async () => {
+    if (!comparisonResult) return;
+    setIsExporting(true);
+    try {
+      await downloadComparisonReport(
+        {
+          filename1,
+          filename2,
+          comparison_summary: comparisonResult.comparison_summary,
+          similarities: comparisonResult.similarities,
+          differences: comparisonResult.differences,
+          shared_blocks: comparisonResult.shared_blocks,
+          shared_topics: comparisonResult.shared_topics,
+          unique_topics_doc1: comparisonResult.unique_topics_doc1,
+          unique_topics_doc2: comparisonResult.unique_topics_doc2,
+        },
+        selectedTemplate || null
+      );
+    } catch (err) {
+      setErrorMsg('Error exporting comparison report.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const tagStyle = (color) => ({
     display: 'inline-block',
     padding: '0.25rem 0.6rem',
@@ -109,6 +146,8 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
     color: `rgb(${color})`,
     border: `1px solid rgba(${color}, 0.3)`
   });
+
+  const currentTemplateLabel = TEMPLATES.find(t => t.value === selectedTemplate)?.label || 'Plain (Default)';
 
   return (
     <div className="fade-in">
@@ -294,6 +333,100 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* ── Export Comparison Bar ── */}
+          <div className="glass-panel fade-in" style={{
+            padding: '1.5rem',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '1rem',
+          }}>
+            <h3 style={{ color: 'var(--text-main)' }}>Export Comparison Report</h3>
+
+            {/* Template selector */}
+            <div style={{ position: 'relative', width: '260px' }}>
+              <button
+                onClick={() => setShowTemplateMenu(!showTemplateMenu)}
+                style={{
+                  width: '100%',
+                  padding: '0.55rem 1rem',
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--panel-border)',
+                  borderRadius: '8px',
+                  color: 'var(--text-main)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  fontSize: '0.9rem',
+                  transition: 'border-color 0.2s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent-secondary)'}
+                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--panel-border)'}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <FiFileText size={14} style={{ color: 'var(--accent-secondary)' }} />
+                  {currentTemplateLabel}
+                </span>
+                <FiChevronDown size={14} style={{
+                  transform: showTemplateMenu ? 'rotate(180deg)' : 'rotate(0)',
+                  transition: 'transform 0.2s'
+                }} />
+              </button>
+
+              {showTemplateMenu && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '100%',
+                  left: 0,
+                  right: 0,
+                  marginBottom: '4px',
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--panel-border)',
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                  zIndex: 50,
+                  boxShadow: '0 -8px 24px rgba(0,0,0,0.3)',
+                }}>
+                  {TEMPLATES.map(t => (
+                    <button
+                      key={t.value}
+                      onClick={() => { setSelectedTemplate(t.value); setShowTemplateMenu(false); }}
+                      style={{
+                        width: '100%',
+                        padding: '0.6rem 1rem',
+                        background: selectedTemplate === t.value ? 'rgba(124, 58, 237, 0.15)' : 'transparent',
+                        border: 'none',
+                        color: selectedTemplate === t.value ? 'var(--accent-secondary)' : 'var(--text-main)',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        fontSize: '0.88rem',
+                        borderBottom: '1px solid rgba(255,255,255,0.04)',
+                        transition: 'background 0.15s',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(124, 58, 237, 0.1)'}
+                      onMouseLeave={e => e.currentTarget.style.background = selectedTemplate === t.value ? 'rgba(124, 58, 237, 0.15)' : 'transparent'}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleExportComparison}
+                disabled={isExporting}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                <FiDownload />
+                {isExporting ? 'Exporting...' : 'Download DOCX Report'}
+              </button>
+            </div>
           </div>
 
         </div>

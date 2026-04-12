@@ -174,12 +174,17 @@ function App() {
     }
   };
 
-  const handleDownload = async (format, docType) => {
+  const handleDownload = async (format, docType, template = null) => {
     setIsDownloading(true);
     try {
       if (docType === 'original') {
         if (!originalText) return;
-        await downloadOriginalCase(originalText, summaryResult?.original_word_count || 0);
+        await downloadOriginalCase(
+          originalText,
+          summaryResult?.original_word_count || 0,
+          format,
+          template
+        );
       } else {
         if (!summaryResult) return;
         await downloadSummary(
@@ -187,7 +192,8 @@ function App() {
           summaryResult.original_word_count,
           summaryResult.summary_word_count,
           format,
-          keywords
+          keywords,
+          template
         );
       }
     } catch (err) {
@@ -229,7 +235,27 @@ function App() {
         userProfile={userProfile}
         theme={theme}
         toggleTheme={toggleTheme}
+        isSidebarOpen={isSidebarOpen}
       />
+
+      {/* Sidebar Backdrop Overlay */}
+      {isSidebarOpen && (
+        <div 
+          onClick={() => setIsSidebarOpen(false)}
+          className="fade-in"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 1500,
+            cursor: 'pointer'
+          }}
+        />
+      )}
 
       <main>
         {/* Mode Toggle */}

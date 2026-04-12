@@ -64,13 +64,14 @@ export const extractKeywords = async (text) => {
   return response.data;
 };
 
-export const downloadSummary = async (summary, originalWordCount, summaryWordCount, format, keywords = []) => {
+export const downloadSummary = async (summary, originalWordCount, summaryWordCount, format, keywords = [], template = null) => {
   const response = await api.post('/download', {
     summary,
     original_word_count: originalWordCount,
     summary_word_count: summaryWordCount,
     format,
-    keywords
+    keywords,
+    template
   }, {
     responseType: 'blob', // Important for file downloads
   });
@@ -88,21 +89,52 @@ export const downloadSummary = async (summary, originalWordCount, summaryWordCou
   window.URL.revokeObjectURL(url);
 };
 
-export const downloadOriginalCase = async (originalText, originalWordCount) => {
+export const downloadOriginalCase = async (originalText, originalWordCount, format = 'pdf', template = null) => {
   const response = await api.post('/download_original', {
     original_text: originalText,
-    original_word_count: originalWordCount
+    original_word_count: originalWordCount,
+    format,
+    template
   }, {
     responseType: 'blob'
   });
   
+  const ext = format === 'docx' ? 'docx' : 'pdf';
   const url = window.URL.createObjectURL(new Blob([response.data]));
   const link = document.createElement('a');
   link.href = url;
-  link.setAttribute('download', `original_case.pdf`);
+  link.setAttribute('download', `original_case.${ext}`);
   document.body.appendChild(link);
   link.click();
   
+  link.parentNode.removeChild(link);
+  window.URL.revokeObjectURL(url);
+};
+
+export const downloadComparisonReport = async (comparisonData, template = null) => {
+  const response = await api.post('/download_comparison', {
+    filename1: comparisonData.filename1 || 'Document 1',
+    filename2: comparisonData.filename2 || 'Document 2',
+    comparison_summary: comparisonData.comparison_summary || '',
+    similarities: comparisonData.similarities || [],
+    differences: comparisonData.differences || [],
+    shared_blocks: comparisonData.shared_blocks || [],
+    shared_topics: comparisonData.shared_topics || [],
+    unique_topics_doc1: comparisonData.unique_topics_doc1 || [],
+    unique_topics_doc2: comparisonData.unique_topics_doc2 || [],
+    format: 'docx',
+    template
+  }, {
+    responseType: 'blob'
+  });
+
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `comparison_report.docx`);
+  document.body.appendChild(link);
+  link.click();
+
   link.parentNode.removeChild(link);
   window.URL.revokeObjectURL(url);
 };

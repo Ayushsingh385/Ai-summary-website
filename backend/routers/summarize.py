@@ -10,7 +10,10 @@ from typing import Optional, List, Any, Dict
 
 from services.pdf_service import validate_pdf, extract_text_from_pdf
 from services.nlp_service import summarize_text, extract_keywords, compute_text_stats, extract_citations, compare_documents
-from services.download_service import generate_summary_pdf, generate_summary_txt, generate_summary_docx, generate_original_pdf
+from services.download_service import (
+    generate_summary_pdf, generate_summary_txt, generate_summary_docx,
+    generate_original_pdf, generate_original_docx, generate_comparison_docx,
+)
 from services.vector_service import vector_service
 from services.difference_engine import compare_documents_semantic, get_comparison_summary
 
@@ -57,12 +60,31 @@ class DownloadRequest(BaseModel):
     format: str = "txt"  # pdf | txt | docx
     filename: Optional[str] = "summary"
     keywords: Optional[list] = []
+    template: Optional[str] = None  # zp_official | court_order | general
 
 
 class DownloadOriginalRequest(BaseModel):
     """Request body for the /download_original endpoint."""
     original_text: str
     original_word_count: int = 0
+    format: str = "pdf"  # pdf | docx
+    filename: Optional[str] = "original_case"
+    template: Optional[str] = None  # zp_official | court_order | general
+
+
+class DownloadComparisonRequest(BaseModel):
+    """Request body for the /download_comparison endpoint."""
+    filename1: str = "Document 1"
+    filename2: str = "Document 2"
+    comparison_summary: str = ""
+    similarities: Optional[list] = []
+    differences: Optional[list] = []
+    shared_blocks: Optional[list] = []
+    shared_topics: Optional[list] = []
+    unique_topics_doc1: Optional[list] = []
+    unique_topics_doc2: Optional[list] = []
+    format: str = "docx"  # docx
+    template: Optional[str] = None  # zp_official | court_order | general
 
 
 class SaveCaseRequest(BaseModel):
@@ -305,6 +327,7 @@ async def download_summary(request: Request, body_request: DownloadRequest):
             body_request.summary_word_count,
             filename=body_request.filename,
             keywords=body_request.keywords,
+            template=body_request.template,
         )
         return Response(
             content=docx_bytes,
@@ -322,16 +345,55 @@ async def download_summary(request: Request, body_request: DownloadRequest):
 @router.post("/download_original")
 async def download_original(request: DownloadOriginalRequest):
     """
-    Download the properly aligned original case text as a PDF.
+    Download the original case text as PDF or DOCX.
     """
-    pdf_bytes = generate_original_pdf(
-        request.original_text,
-        request.original_word_count,
+    if request.format == "docx":
+        docx_bytes = generate_original_docx(
+            request.original_text,
+            request.original_word_count,
+            filename=request.filename,
+            template=request.template,
+        )
+        return Response(
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": "attachment; filename=original_case.docx"}
+        )
+    else:
+        pdf_bytes = generate_original_pdf(
+            request.original_text,
+            request.original_word_count,
+        )
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": "attachment; filename=original_case.pdf"}
+        )
+
+
+@router.post("/download_comparison")
+@limiter.limit("20/minute")
+async def download_comparison(request: Request, body_request: DownloadComparisonRequest):
+    """
+    Download a comparison report as a DOCX file.
+    Supports legal document templates.
+    """
+    docx_bytes = generate_comparison_docx(
+        filename1=body_request.filename1,
+        filename2=body_request.filename2,
+        comparison_summary=body_request.comparison_summary,
+        similarities=body_request.similarities,
+        differences=body_request.differences,
+        shared_blocks=body_request.shared_blocks,
+        shared_topics=body_request.shared_topics,
+        unique_topics_doc1=body_request.unique_topics_doc1,
+        unique_topics_doc2=body_request.unique_topics_doc2,
+        template=body_request.template,
     )
     return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": "attachment; filename=original_case.pdf"}
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": "attachment; filename=comparison_report.docx"}
     )
 
 
