@@ -18,6 +18,7 @@ const DownloadBar = ({ onDownload, isDownloading, disabled, activeTab }) => {
     <div className="glass-panel fade-in" style={{
       marginTop: '2rem',
       padding: '1.5rem',
+      paddingBottom: '3rem', // Extra room for the template dropdown
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
@@ -29,22 +30,8 @@ const DownloadBar = ({ onDownload, isDownloading, disabled, activeTab }) => {
       <div style={{ position: 'relative', width: '260px' }}>
         <button
           onClick={() => setShowTemplateMenu(!showTemplateMenu)}
-          style={{
-            width: '100%',
-            padding: '0.55rem 1rem',
-            background: 'var(--bg-card)',
-            border: '1px solid var(--panel-border)',
-            borderRadius: '8px',
-            color: 'var(--text-main)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: '0.9rem',
-            transition: 'border-color 0.2s',
-          }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent-primary)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--panel-border)'}
+          className="select-trigger"
+          style={{ width: '100%' }}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <FiFileText size={14} style={{ color: 'var(--accent-primary)' }} />
@@ -57,37 +44,12 @@ const DownloadBar = ({ onDownload, isDownloading, disabled, activeTab }) => {
         </button>
 
         {showTemplateMenu && (
-          <div style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            right: 0,
-            marginTop: '4px',
-            background: 'var(--bg-card)',
-            border: '1px solid var(--panel-border)',
-            borderRadius: '8px',
-            overflow: 'hidden',
-            zIndex: 50,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-          }}>
+          <div className="dropdown-menu">
             {TEMPLATES.map(t => (
               <button
                 key={t.value}
                 onClick={() => { setSelectedTemplate(t.value); setShowTemplateMenu(false); }}
-                style={{
-                  width: '100%',
-                  padding: '0.6rem 1rem',
-                  background: selectedTemplate === t.value ? 'rgba(124, 58, 237, 0.15)' : 'transparent',
-                  border: 'none',
-                  color: selectedTemplate === t.value ? 'var(--accent-primary)' : 'var(--text-main)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  fontSize: '0.88rem',
-                  borderBottom: '1px solid rgba(255,255,255,0.04)',
-                  transition: 'background 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(124, 58, 237, 0.1)'}
-                onMouseLeave={e => e.currentTarget.style.background = selectedTemplate === t.value ? 'rgba(124, 58, 237, 0.15)' : 'transparent'}
+                className={`dropdown-item ${selectedTemplate === t.value ? 'selected' : ''}`}
               >
                 {t.label}
               </button>

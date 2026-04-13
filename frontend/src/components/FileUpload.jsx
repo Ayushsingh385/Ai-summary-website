@@ -13,11 +13,12 @@ const FileUpload = ({ onUpload }) => {
       if (rejection.errors[0].code === 'file-too-large') {
         setError('File is too large. Maximum size is 20MB.');
       } else if (rejection.errors[0].code === 'file-invalid-type') {
-        setError('Invalid file type. Please upload a PDF Case File.');
+        setError('Invalid file type. Supported: PDF, JPG, PNG');
       } else {
         setError(rejection.errors[0].message);
       }
       return;
+
     }
 
     if (acceptedFiles.length > 0) {
@@ -28,7 +29,9 @@ const FileUpload = ({ onUpload }) => {
   const { getRootProps, getInputProps, isDragActive, acceptedFiles } = useDropzone({
     onDrop,
     accept: {
-      'application/pdf': ['.pdf']
+      'application/pdf': ['.pdf'],
+      'image/jpeg': ['.jpg', '.jpeg'],
+      'image/png': ['.png']
     },
     maxSize: 20 * 1024 * 1024, // 20 MB
     multiple: false
@@ -51,8 +54,8 @@ const FileUpload = ({ onUpload }) => {
         ) : (
           <div>
             <FiUploadCloud className="dropzone-icon" />
-            <h3>{isDragActive ? "Drop the Case File here" : "Drag & drop a Case File"}</h3>
-            <p>or click to browse from your device (PDF format, Max 20MB)</p>
+            <h3>{isDragActive ? "Drop the Case File here" : "Drag & drop a Case File or Image"}</h3>
+            <p>or click to browse from your device (PDF, JPG, PNG)</p>
           </div>
         )}
       </div>

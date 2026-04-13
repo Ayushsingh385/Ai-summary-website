@@ -8,7 +8,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional, List, Any, Dict
 
-from services.pdf_service import validate_pdf, extract_text_from_pdf
+from services.pdf_service import validate_pdf, extract_text_from_pdf, extract_text_from_image
 from services.nlp_service import summarize_text, extract_keywords, compute_text_stats, extract_citations, compare_documents
 from services.download_service import (
     generate_summary_pdf, generate_summary_txt, generate_summary_docx,
@@ -163,7 +163,7 @@ async def compare_documents(request: Request, body_request: CompareRequest):
 
 @router.post("/upload")
 @limiter.limit("20/minute")
-async def upload_pdf(request: Request, file: UploadFile = File(...)):
+async def upload_file(request: Request, file: UploadFile = File(...)):
     """
     Upload a PDF file and extract its text content.
 
@@ -177,10 +177,15 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
     # Validate the uploaded file
     validate_pdf(file_bytes, file.content_type, file.filename)
 
-    # Extract text
-    result = extract_text_from_pdf(file_bytes)
+    # Extract text based on file type
+    if file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+        result = extract_text_from_image(file_bytes)
+    else:
+        result = extract_text_from_pdf(file_bytes)
+    
     result["filename"] = file.filename
     return result
+
 
 
 @router.post("/summarize")
@@ -551,3 +556,91 @@ async def get_comparison_detail(comparison_id: int, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail="Comparison not found")
         
     return comparison
+
+from collections import Counter
+import json
+
+@router.get("/analytics")
+async def get_analytics(db: Session = Depends(get_db)):
+    """
+    Retrieve aggregated analytics: most common entities, case types, summary length trends.
+    """
+    cases = db.query(CaseDocument).all()
+    
+    total_cases = len(cases)
+    
+    entity_counter = Counter()
+    case_types = Counter()
+    trends = []
+    
+    # Simple predefined types check based on text context
+    type_keywords = {
+        "Criminal": ["criminal", "murder", "theft", "assault", "jail", "prison"],
+        "Civil": ["civil", "property", "tenant", "landlord", "dispute", "eviction"],
+        "Family": ["divorce", "maintenance", "custody", "marriage", "family"],
+        "Corporate": ["company", "corporate", "shareholder", "business", "contract", "tax"]
+    }
+    
+    for c in cases:
+        # Most common entities
+        kw_list = c.keywords if c.keywords else []
+        if isinstance(kw_list, str):
+            try: kw_list = json.loads(kw_list)
+            except: kw_list = []
+                
+        text_lower = ""
+        if c.original_text:
+            text_lower = c.original_text.lower()
+            
+        for kw in kw_list:
+            if isinstance(kw, dict):
+                ktype = kw.get('type', '')
+                if ktype in ["PERSON", "ORG", "GPE", "LAW", "LOC", "FAC"]:
+                    # Clean up keyword display
+                    k_name = str(kw.get("keyword")).title()
+                    entity_counter[k_name] += 1
+        
+        # Case types logic
+        predicted_type = "Misc/Other"
+        for ctype, kws in type_keywords.items():
+            if any(k in text_lower for k in kws):
+                predicted_type = ctype
+                break
+        case_types[predicted_type] += 1
+                
+        # Trends
+        stats = c.stats if c.stats else {}
+        if isinstance(stats, str):
+             try: stats = json.loads(stats)
+             except: stats = {}
+             
+        orig_wc = stats.get("original_word_count", 0)
+        sum_wc = stats.get("summary_word_count", 0)
+        comp_ratio = stats.get("compression_ratio", 0)
+        
+        if orig_wc > 0:
+            trends.append({
+                "id": c.id,
+                "date": c.created_at.strftime("%Y-%m-%d") if c.created_at else "",
+                "original_words": orig_wc,
+                "summary_words": sum_wc,
+                "compression_ratio": comp_ratio
+            })
+            
+    # Sort trends by ID (proxy for chronological order)
+    trends.sort(key=lambda x: x["id"])
+    
+    # Top 10 entities
+    top_entities = [{"name": kv[0], "count": kv[1]} for kv in entity_counter.most_common(10)]
+    
+    # Format case types
+    total_types = sum(case_types.values()) or 1
+    case_types_formatted = [{"type": k, "count": v, "percentage": round(v / total_types * 100)} for k, v in case_types.most_common()]
+
+    # Return last 15 trends points to keep charts readable
+    return {
+        "total_cases": total_cases,
+        "top_entities": top_entities,
+        "case_types": case_types_formatted,
+        "trends": trends[-15:]
+    }

@@ -12,7 +12,9 @@
   --accent-secondary: #f97316; /* Bright Saffron/Orange */
   --success: #10b981;
   --danger: #ef4444;
+  --bg-card: #1e293b;
 }
+
 
 * {
   box-sizing: border-box;
@@ -58,14 +60,14 @@ body {
 
 header {
   text-align: center;
-  margin-bottom: 3rem;
+  margin-bottom: 1.5rem;
 }
 
 header h1 {
-  font-size: 3rem;
+  font-size: 2.2rem;
   font-weight: 700;
   letter-spacing: -1px;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -87,10 +89,16 @@ header p {
   border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   border: none;
   font-family: 'Inter', sans-serif;
+  user-select: none;
 }
+
+.btn:active {
+  transform: scale(0.95);
+}
+
 
 .btn-primary {
   background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
@@ -100,8 +108,10 @@ header p {
 
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+  filter: brightness(1.1);
 }
+
 
 .btn-primary:disabled {
   opacity: 0.5;
@@ -115,19 +125,117 @@ header p {
 }
 
 .btn-outline:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
 }
+
+/* Mode Toggle Buttons */
+.btn-mode {
+  padding: 0.75rem 1.75rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.5px;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  color: var(--text-muted);
+}
+
+.btn-mode:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--text-main);
+  transform: translateY(-2px);
+}
+
+.btn-mode.active-summarize {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: white;
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+}
+
+.btn-mode.active-summarize:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
+}
+
+.btn-mode.active-compare {
+  background: var(--accent-secondary);
+  border-color: var(--accent-secondary);
+  color: white;
+  box-shadow: 0 4px 15px rgba(249, 115, 22, 0.4);
+}
+
+.btn-mode.active-compare:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 6px 20px rgba(249, 115, 22, 0.5);
+}
+
+
 
 /* Dropzone */
 .dropzone {
-  border: 2px dashed rgba(59, 130, 246, 0.5);
+  border: 2px dashed rgba(59, 130, 246, 0.4);
   border-radius: 16px;
-  padding: 4rem 2rem;
+  padding: 2rem 1.5rem;
   text-align: center;
   cursor: pointer;
-  transition: all 0.3s ease;
-  background: rgba(59, 130, 246, 0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.4), rgba(59, 130, 246, 0.05));
+  position: relative;
+  overflow: hidden;
 }
+
+.dropzone::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.03) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.dropzone:hover {
+  border-color: var(--accent-primary);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.6), rgba(59, 130, 246, 0.1));
+  box-shadow: 0 0 25px rgba(59, 130, 246, 0.2), inset 0 0 15px rgba(59, 130, 246, 0.05);
+  transform: translateY(-2px);
+}
+
+
+.dropzone.analytics {
+  border-color: rgba(139, 92, 246, 0.4);
+  background: linear-gradient(135deg, rgba(88, 28, 135, 0.1), rgba(139, 92, 246, 0.05));
+  position: relative;
+  overflow: hidden;
+}
+
+.dropzone.analytics::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.05) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.dropzone.analytics .dropzone-icon {
+  color: #a78bfa;
+  filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.4));
+}
+
+.dropzone.analytics:hover {
+  border-color: #a78bfa;
+  background: linear-gradient(135deg, rgba(88, 28, 135, 0.2), rgba(139, 92, 246, 0.1));
+  box-shadow: 0 0 25px rgba(139, 92, 246, 0.25), inset 0 0 15px rgba(139, 92, 246, 0.1);
+  transform: translateY(-2px);
+}
+
+
 
 .dropzone.active {
   border-color: var(--accent-primary);
@@ -135,10 +243,50 @@ header p {
   transform: scale(1.02);
 }
 
+/* Header Buttons */
+.header-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.header-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--accent-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2);
+}
+
+.header-btn:active {
+  transform: scale(0.96);
+}
+
+.header-btn.danger {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.header-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: var(--danger);
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.2);
+}
+
+
 .dropzone-icon {
-  font-size: 4rem;
+  font-size: 2.5rem;
   color: var(--accent-primary);
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 }
 
 .dropzone h3 {
@@ -172,12 +320,18 @@ header p {
 
 .option-card:hover {
   background: rgba(255, 255, 255, 0.05);
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.2);
 }
+
 
 .option-card.selected {
   border-color: var(--accent-primary);
   background: rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
 }
+
 
 .option-card h4 {
   margin-bottom: 0.5rem;
@@ -253,7 +407,108 @@ header p {
   border-radius: 99px;
   font-size: 0.85rem;
   margin: 0.25rem;
+  transition: all 0.2s ease;
+  cursor: default;
 }
+
+.keyword-chip:hover {
+  background: rgba(139, 92, 246, 0.25);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+/* Form Elements */
+.select-trigger {
+  width: 100%;
+  padding: 0.55rem 1rem;
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--text-main);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.select-trigger:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.select-trigger:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.form-container {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--bg-card);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+/* Dropdown Menu */
+.dropdown-menu {
+  position: absolute;
+  bottom: calc(100% + 4px); /* Fly up! */
+  left: 0;
+  right: 0;
+  background-color: #1e293b;
+  background: var(--bg-card);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 100;
+  box-shadow: 0 -8px 24px rgba(0,0,0,0.4); /* Shadow towards top */
+  animation: fadeIn 0.15s ease-out;
+}
+
+.dropdown-item {
+  width: 100%;
+  padding: 0.6rem 1rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  color: var(--text-main);
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.88rem;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+
+.dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--accent-primary);
+  padding-left: 1.25rem;
+}
+
+.dropdown-item.selected {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+
+
+.select-trigger option {
+  background-color: #0f172a; /* Fallback to var(--bg-dark) literal value */
+  color: var(--text-main);
+  padding: 10px;
+}
+
+
 
 .keywords-container {
   margin-top: 1rem;
@@ -325,4 +580,5 @@ body[data-theme='light'] {
   --panel-border: rgba(0, 0, 0, 0.1);
   --text-main: #0f172a;
   --text-muted: #475569;
+  --bg-card: #f1f5f9;
 }

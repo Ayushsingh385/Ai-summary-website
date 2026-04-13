@@ -18,19 +18,7 @@ const Header = ({ onOpenHistory, onLogout, userProfile, theme, toggleTheme, isSi
         <div style={{ position: 'absolute', top: 0, left: 0, textAlign: 'left', zIndex: 100 }}>
           <button 
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            style={{
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              color: 'var(--text-main)',
-              padding: '0.5rem 1rem',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              fontWeight: '600',
-              transition: 'all 0.2s ease'
-            }}
+            className="header-btn"
           >
             <FiUser /> {userProfile.user_id}
           </button>
@@ -93,28 +81,11 @@ const Header = ({ onOpenHistory, onLogout, userProfile, theme, toggleTheme, isSi
       {onOpenHistory && (
         <button 
           onClick={onOpenHistory}
+          className="header-btn"
           style={{
             position: 'absolute',
             top: 0,
             right: 120,
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            color: 'var(--text-main)',
-            padding: '0.5rem 1rem',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            transition: 'all 0.2s ease'
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-            e.currentTarget.style.borderColor = 'var(--accent-primary)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
           }}
         >
           <FiClock /> History
@@ -124,28 +95,11 @@ const Header = ({ onOpenHistory, onLogout, userProfile, theme, toggleTheme, isSi
       {onLogout && (
         <button 
           onClick={onLogout}
+          className="header-btn danger"
           style={{
             position: 'absolute',
             top: 0,
             right: 0,
-            background: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            color: '#fca5a5',
-            padding: '0.5rem 1rem',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            transition: 'all 0.2s ease'
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
-            e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
-            e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
           }}
         >
           <FiLogOut /> Logout

@@ -194,3 +194,9 @@ export const fetchComparisonDetail = async (comparisonId) => {
   const response = await api.get(`/history/comparisons/${comparisonId}`);
   return response.data;
 };
+
+export const fetchAnalytics = async () => {
+  const response = await api.get('/analytics');
+  return response.data;
+};
+

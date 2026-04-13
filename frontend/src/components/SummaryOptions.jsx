@@ -25,21 +25,14 @@ const SummaryOptions = ({ selectedLength, onSelect, selectedLanguage, onLanguage
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem', width: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'var(--bg-card)', padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
+        <div className="form-container">
           <label htmlFor="language-select" style={{ fontWeight: '500', color: 'var(--text-main)' }}>Summary Language:</label>
           <select 
             id="language-select" 
             value={selectedLanguage} 
             onChange={(e) => onLanguageChange(e.target.value)}
-            style={{ 
-              background: 'var(--bg-dark)', 
-              color: 'var(--text-main)', 
-              border: '1px solid var(--panel-border)', 
-              padding: '0.4rem 0.8rem', 
-              borderRadius: '4px',
-              outline: 'none',
-              cursor: 'pointer'
-            }}
+            className="select-trigger"
+            style={{ width: 'auto' }}
           >
             <option value="en">English</option>
             <option value="hi">Hindi</option>

@@ -11,6 +11,8 @@ import HistorySidebar from './components/HistorySidebar';
 import AuthPage from './components/AuthPage';
 import ChatBot from './components/ChatBot';
 import CompareMode from './components/CompareMode';
+import AnalyticsDashboard from './components/AnalyticsDashboard';
+import { FiPieChart } from 'react-icons/fi';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
@@ -51,7 +53,7 @@ function App() {
   const [citations, setCitations] = useState([]);
   
   // UI State
-  const [appMode, setAppMode] = useState('summarize'); // 'summarize' | 'compare'
+  const [appMode, setAppMode] = useState('summarize'); // 'summarize' | 'compare' | 'analytics'
   const [selectedLength, setSelectedLength] = useState('medium');
   const [selectedLanguage, setSelectedLanguage] = useState('en');
   const [isDownloading, setIsDownloading] = useState(false);
@@ -261,34 +263,45 @@ function App() {
         {/* Mode Toggle */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '2rem' }}>
           <button 
-            className="btn" 
-            style={{ 
-              background: appMode === 'summarize' ? 'var(--accent-primary)' : 'transparent',
-              border: appMode === 'summarize' ? 'none' : '1px solid var(--panel-border)'
-            }}
+            className={`btn btn-mode ${appMode === 'summarize' ? 'active-summarize' : ''}`} 
             onClick={() => { resetState(); setAppMode('summarize'); setHistoricalComparisonData(null); }}
           >
             Summarize Case
           </button>
           <button 
-            className="btn" 
-            style={{ 
-              background: appMode === 'compare' ? 'var(--accent-secondary)' : 'transparent',
-              border: appMode === 'compare' ? 'none' : '1px solid var(--panel-border)'
-            }}
+            className={`btn btn-mode ${appMode === 'compare' ? 'active-compare' : ''}`} 
             onClick={() => { resetState(); setAppMode('compare'); setHistoricalComparisonData(null); }}
           >
             Compare Documents
           </button>
         </div>
 
-        {appMode === 'compare' ? (
+        {appMode === 'analytics' ? (
+          <AnalyticsDashboard />
+        ) : appMode === 'compare' ? (
           <CompareMode selectedLanguage={selectedLanguage} initialHistoricalComparison={historicalComparisonData} />
         ) : (
           <>
-            {/* Upload Section */}
-            <section style={{ marginBottom: '3rem' }}>
+            {/* Upload & Analytics Section */}
+            <section style={{ 
+              marginBottom: '1rem', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: '1rem'
+            }}>
               <FileUpload onUpload={handleFileUpload} />
+              
+              <div className="fade-in">
+                <div 
+                  className="dropzone analytics"
+                  onClick={() => { resetState(); setAppMode('analytics'); setHistoricalComparisonData(null); }}
+                  style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '110px' }}
+                >
+                  <FiPieChart className="dropzone-icon" />
+                  <h3>Advanced Analytics Dashboard</h3>
+                  <p>Explore case trends, common legal entities, and statistics.</p>
+                </div>
+              </div>
             </section>
 
             {/* Error Handling */}

@@ -7,8 +7,21 @@ import pypdfium2 as pdfium
 from io import BytesIO
 from fastapi import HTTPException
 import pytesseract
+from PIL import Image
 from pdf2image import convert_from_bytes
 import logging
+import os
+
+# Check for Tesseract path on Windows
+if os.name == 'nt':
+    tesseract_paths = [
+        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+        r'C:\Users\USER\AppData\Local\Tesseract-OCR\tesseract.exe'
+    ]
+    for path in tesseract_paths:
+        if os.path.exists(path):
+            pytesseract.pytesseract.tesseract_cmd = path
+            break
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +29,11 @@ logger = logging.getLogger(__name__)
 MAX_FILE_SIZE = 20 * 1024 * 1024
 ALLOWED_CONTENT_TYPES = [
     "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/jpg"
 ]
+
 
 
 def validate_pdf(file_bytes: bytes, content_type: str, filename: str) -> None:
@@ -24,19 +41,20 @@ def validate_pdf(file_bytes: bytes, content_type: str, filename: str) -> None:
     Validate that the uploaded file is a legitimate PDF within size limits.
     Raises HTTPException on validation failure.
     """
-    # Check content type
     if content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid file type '{content_type}'. Only PDF files are accepted."
+            detail=f"Invalid file type '{content_type}'. Supported types: PDF, JPG, PNG."
         )
 
     # Check file extension
-    if not filename.lower().endswith(".pdf"):
+    ext = filename.lower().split('.')[-1]
+    if ext not in ['pdf', 'jpg', 'jpeg', 'png', 'webp']:
         raise HTTPException(
             status_code=400,
-            detail="Invalid file extension. Only .pdf files are accepted."
+            detail="Invalid file extension. Supported extensions: .pdf, .jpg, .jpeg, .png, .webp"
         )
+
 
     # Check file size
     if len(file_bytes) > MAX_FILE_SIZE:
@@ -46,12 +64,13 @@ def validate_pdf(file_bytes: bytes, content_type: str, filename: str) -> None:
             detail=f"File too large ({size_mb:.1f} MB). Maximum size is 20 MB."
         )
 
-    # Check PDF magic bytes
-    if not file_bytes[:5] == b"%PDF-":
+    # Check PDF magic bytes if it's a PDF
+    if filename.lower().endswith(".pdf") and not file_bytes[:5] == b"%PDF-":
         raise HTTPException(
             status_code=400,
             detail="File does not appear to be a valid PDF."
         )
+
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> dict:
@@ -141,3 +160,46 @@ def extract_text_from_pdf(file_bytes: bytes) -> dict:
             status_code=500,
             detail=f"Error processing PDF: {str(e)}"
         )
+
+def extract_text_from_image(file_bytes: bytes) -> dict:
+    """
+    Extract text from an image file using pytesseract.
+    Returns a dict with extracted text, page count (1), and word count.
+    """
+    try:
+        # Load image from bytes
+        img = Image.open(BytesIO(file_bytes))
+        
+        # Perform OCR
+        full_text = pytesseract.image_to_string(img).strip()
+        
+        if not full_text:
+            raise HTTPException(
+                status_code=422,
+                detail="Could not extract any meaningful text from the image using OCR."
+            )
+            
+        # Standardize return format
+        word_count = len(full_text.split())
+        reading_time_minutes = max(1, round(word_count / 200))
+        
+        return {
+            "text": full_text,
+            "page_count": 1,
+            "word_count": word_count,
+            "reading_time_minutes": reading_time_minutes,
+            "pages": [{
+                "page_number": 1,
+                "text": full_text,
+                "char_count": len(full_text)
+            }]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Image OCR failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error performing OCR on image: {str(e)}"
+        )
+
