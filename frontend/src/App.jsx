@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { uploadPdf, summarizeText, extractKeywords, downloadSummary, downloadOriginalCase, saveCase, fetchProfile } from './api';
+import { uploadPdf, summarizeText, extractKeywords, classifyCase, analyzeDocument, downloadSummary, downloadOriginalCase, saveCase, fetchProfile } from './api';
 
 import Header from './components/Header';
 import FileUpload from './components/FileUpload';
@@ -12,6 +12,7 @@ import AuthPage from './components/AuthPage';
 import ChatBot from './components/ChatBot';
 import CompareMode from './components/CompareMode';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
+import LegalAnalysis from './components/LegalAnalysis';
 import { FiPieChart } from 'react-icons/fi';
 
 function App() {
@@ -51,6 +52,8 @@ function App() {
   const [summaryResult, setSummaryResult] = useState(null);
   const [keywords, setKeywords] = useState([]);
   const [citations, setCitations] = useState([]);
+  const [caseType, setCaseType] = useState(null);
+  const [legalAnalysis, setLegalAnalysis] = useState(null);
   
   // UI State
   const [appMode, setAppMode] = useState('summarize'); // 'summarize' | 'compare' | 'analytics'
@@ -65,6 +68,8 @@ function App() {
     setSummaryResult(null);
     setKeywords([]);
     setCitations([]);
+    setCaseType(null);
+    setLegalAnalysis(null);
     setErrorMsg('');
     setActiveTab('summary');
   };
@@ -72,25 +77,37 @@ function App() {
   const handleFileUpload = async (file) => {
     resetState();
     setLoadingMsg('Reading your file...');
-    
+
     try {
       // 1. Upload & Extract
       const uploadRes = await uploadPdf(file);
       setOriginalText(uploadRes.text);
       setFilename(uploadRes.filename || file.name);
-      
-      // 2. Extract Keywords (Parallel with summarization)
-      setLoadingMsg('Looking for names...');
-      const keywordsRes = await extractKeywords(uploadRes.text).catch(err => {
-        console.warn("Keywords error:", err);
-        return { keywords: [], citations: [] };
-      });
+
+      // 2. Extract Keywords, Classify Case Type, and Analyze (in parallel)
+      setLoadingMsg('Analyzing document...');
+      const [keywordsRes, classifyRes, analysisRes] = await Promise.all([
+        extractKeywords(uploadRes.text).catch(err => {
+          console.warn("Keywords error:", err);
+          return { keywords: [], citations: [] };
+        }),
+        classifyCase(uploadRes.text).catch(err => {
+          console.warn("Classify error:", err);
+          return null;
+        }),
+        analyzeDocument(uploadRes.text).catch(err => {
+          console.warn("Analysis error:", err);
+          return null;
+        })
+      ]);
       setKeywords(keywordsRes.keywords || []);
       setCitations(keywordsRes.citations || []);
-      
+      setCaseType(classifyRes);
+      setLegalAnalysis(analysisRes);
+
       // 3. Summarize
       await handleSummarize(uploadRes.text, selectedLength, uploadRes.filename || file.name, keywordsRes.keywords);
-      
+
     } catch (err) {
       setErrorMsg(err.response?.data?.detail || err.message || 'Error processing file.');
     } finally {
@@ -125,21 +142,31 @@ function App() {
     }
   };
 
-  const onSelectCaseFromHistory = (caseItem) => {
+  const onSelectCaseFromHistory = async (caseItem) => {
     setOriginalText(caseItem.original_text || "");
     setFilename(caseItem.filename || "");
     setKeywords(caseItem.keywords || []);
-    setCitations([]); // Optional: could extract from originalText if needed, but keeping it simple for now
-    
-    
+    setCitations([]);
+
     setSummaryResult({
       summary: caseItem.summary_text || "",
       original_word_count: caseItem.stats?.original_word_count || 0,
       summary_word_count: caseItem.stats?.summary_word_count || 0,
       original_stats: caseItem.stats || {}
     });
-    
-    setIsSidebarOpen(false); // Close sidebar automatically on mobile/etc
+
+    // Classify the case type from history
+    if (caseItem.original_text) {
+      try {
+        const classifyRes = await classifyCase(caseItem.original_text);
+        setCaseType(classifyRes);
+      } catch (err) {
+        console.warn("Classify error from history:", err);
+        setCaseType(null);
+      }
+    }
+
+    setIsSidebarOpen(false);
     setActiveTab('summary');
   };
 
@@ -329,11 +356,13 @@ function App() {
                   onLanguageChange={onLanguageChange}
                 />
                 
-                <ResultsPanel 
+                <ResultsPanel
                   originalText={originalText}
                   summaryResult={summaryResult}
                   keywords={keywords}
                   citations={citations}
+                  caseType={caseType}
+                  legalAnalysis={legalAnalysis}
                   activeTab={activeTab}
                   setActiveTab={setActiveTab}
                 />

@@ -64,6 +64,16 @@ export const extractKeywords = async (text) => {
   return response.data;
 };
 
+export const classifyCase = async (text) => {
+  const response = await api.post('/classify', { text });
+  return response.data;
+};
+
+export const analyzeDocument = async (text) => {
+  const response = await api.post('/analyze', { text });
+  return response.data;
+};
+
 export const downloadSummary = async (summary, originalWordCount, summaryWordCount, format, keywords = [], template = null) => {
   const response = await api.post('/download', {
     summary,

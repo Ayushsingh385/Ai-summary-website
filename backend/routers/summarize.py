@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Any, Dict
 
 from services.pdf_service import validate_pdf, extract_text_from_pdf, extract_text_from_image
-from services.nlp_service import summarize_text, extract_keywords, compute_text_stats, extract_citations, compare_documents
+from services.nlp_service import summarize_text, extract_keywords, compute_text_stats, extract_citations, compare_documents, classify_case_type, analyze_legal_document
 from services.download_service import (
     generate_summary_pdf, generate_summary_txt, generate_summary_docx,
     generate_original_pdf, generate_original_docx, generate_comparison_docx,
@@ -44,6 +44,14 @@ class KeywordsRequest(BaseModel):
     """Request body for the /keywords endpoint."""
     text: str
     top_n: Optional[int] = 15
+
+class ClassifyRequest(BaseModel):
+    """Request body for the /classify endpoint."""
+    text: str
+
+class AnalyzeRequest(BaseModel):
+    """Request body for the /analyze endpoint."""
+    text: str
 
 class CompareRequest(BaseModel):
     """Request body for the /compare endpoint."""
@@ -236,6 +244,52 @@ async def keywords(request: Request, body_request: KeywordsRequest):
     result = extract_keywords(body_request.text, body_request.top_n)
     citations = extract_citations(body_request.text)
     return {"keywords": result, "citations": citations}
+
+
+@router.post("/classify")
+@limiter.limit("20/minute")
+async def classify_case(request: Request, body_request: ClassifyRequest):
+    """
+    Classify the legal case type based on document content.
+
+    Returns:
+        - primary_type: The most likely case category
+        - confidence: Confidence score (0-100)
+        - all_scores: Top 5 category scores
+        - matched_keywords: Keywords that triggered classification
+    """
+    if not body_request.text or len(body_request.text.strip()) < 20:
+        raise HTTPException(
+            status_code=400,
+            detail="Text is too short for classification."
+        )
+
+    result = classify_case_type(body_request.text)
+    return result
+
+
+@router.post("/analyze")
+@limiter.limit("10/minute")
+async def analyze_document(request: Request, body_request: AnalyzeRequest):
+    """
+    Comprehensive legal document analysis.
+
+    Returns:
+        - case_type: Case classification with confidence
+        - legal_issues: Extracted legal questions
+        - timeline: Chronological events from the document
+        - monetary_claims: All monetary amounts mentioned
+        - sections: Structured breakdown (Facts, Issues, Reasoning, Order)
+        - citations: Legal citations with links
+    """
+    if not body_request.text or len(body_request.text.strip()) < 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Text is too short for analysis. Please provide at least 100 characters."
+        )
+
+    result = analyze_legal_document(body_request.text)
+    return result
 
 
 # Consolidated with /api/compare above

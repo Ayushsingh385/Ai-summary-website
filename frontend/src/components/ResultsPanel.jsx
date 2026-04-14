@@ -1,26 +1,85 @@
-import { FiClock, FiFile, FiTag } from 'react-icons/fi';
+import { FiClock, FiFile, FiTag, FiBriefcase, FiBook } from 'react-icons/fi';
+import LegalAnalysis from './LegalAnalysis';
 
-const ResultsPanel = ({ originalText, summaryResult, keywords, citations, activeTab, setActiveTab }) => {
+// Case type color mapping
+const CASE_TYPE_COLORS = {
+  "Criminal": { bg: "#dc2626", text: "#fff" },
+  "Civil": { bg: "#2563eb", text: "#fff" },
+  "Family": { bg: "#db2777", text: "#fff" },
+  "Corporate": { bg: "#7c3aed", text: "#fff" },
+  "Constitutional": { bg: "#059669", text: "#fff" },
+  "Tax": { bg: "#d97706", text: "#fff" },
+  "Labor & Employment": { bg: "#0891b2", text: "#fff" },
+  "Land & Revenue": { bg: "#65a30d", text: "#fff" },
+  "Intellectual Property": { bg: "#c026d3", text: "#fff" },
+  "Environmental": { bg: "#0d9488", text: "#fff" },
+  "Misc/Other": { bg: "#6b7280", text: "#fff" },
+};
+
+const ResultsPanel = ({ originalText, summaryResult, keywords, citations, caseType, legalAnalysis, activeTab, setActiveTab }) => {
 
   return (
     <div className="glass-panel" style={{ marginTop: '2rem', padding: '1rem' }}>
-      
+
+      {/* Case Type Badge */}
+      {caseType && caseType.primary_type && (
+        <div style={{
+          marginBottom: '1rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          flexWrap: 'wrap'
+        }}>
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.5rem 1rem',
+            borderRadius: '20px',
+            background: CASE_TYPE_COLORS[caseType.primary_type]?.bg || '#6b7280',
+            color: CASE_TYPE_COLORS[caseType.primary_type]?.text || '#fff',
+            fontWeight: '600',
+            fontSize: '0.9rem'
+          }}>
+            <FiBriefcase />
+            {caseType.primary_type}
+          </span>
+          {caseType.confidence > 0 && (
+            <span style={{
+              fontSize: '0.85rem',
+              color: 'var(--text-muted)'
+            }}>
+              {caseType.confidence}% confidence
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '1rem', paddingLeft: '1rem' }}>
-        <button 
+        <button
           className={`btn ${activeTab === 'summary' ? 'btn-primary' : 'btn-outline'}`}
           onClick={() => setActiveTab('summary')}
           style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
         >
           Read the summary
         </button>
-        <button 
+        <button
           className={`btn ${activeTab === 'original' ? 'btn-primary' : 'btn-outline'}`}
           onClick={() => setActiveTab('original')}
           style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
         >
           Read the full text
         </button>
+        {legalAnalysis && (
+          <button
+            className={`btn ${activeTab === 'analysis' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setActiveTab('analysis')}
+            style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+          >
+            Legal Analysis
+          </button>
+        )}
       </div>
 
       <div className="results-grid">
@@ -40,6 +99,8 @@ const ResultsPanel = ({ originalText, summaryResult, keywords, citations, active
           <div className={`result-content ${activeTab === 'summary' ? 'summary-text' : ''}`}>
             {activeTab === 'summary' ? (
               summaryResult ? summaryResult.summary : 'No summary generated yet.'
+            ) : activeTab === 'analysis' ? (
+              <LegalAnalysis analysis={legalAnalysis} />
             ) : (
               originalText || 'No text extracted.'
             )}

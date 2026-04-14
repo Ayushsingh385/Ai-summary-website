@@ -495,6 +495,483 @@ def compute_text_stats(text: str) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────
+# Case Type Classification
+# ──────────────────────────────────────────────────────────────
+
+CASE_TYPE_KEYWORDS = {
+    "Criminal": [
+        "criminal", "murder", "theft", "assault", "jail", "prison", "fIR", "police",
+        "arrest", "bail", " ipc ", "indian penal code", "homicide", "robbery",
+        "dacoity", "kidnapping", "rape", "fraud", "forgery", "cheating",
+        "weapon", "accused", "convict", "sentenced", "prosecution", "offense",
+        "offence", "investigation", "charge sheet", "cognizable", "cognizance"
+    ],
+    "Civil": [
+        "civil", "property", "tenant", "landlord", "dispute", "eviction", "injunction",
+        "specific performance", "contract", "breach", "damages", "tort", "negligence",
+        "consumer", "compensation", "suit", "plaint", "defendant", "plaintiff",
+        "decree", "execution", "attachment", "sale deed", "title", "possession"
+    ],
+    "Family": [
+        "divorce", "maintenance", "custody", "marriage", "family", "alimony",
+        "child support", "guardian", "matrimony", "dowry", "domestic violence",
+        "separation", "annulment", "hindu marriage act", "muslim personal law",
+        "adoption", "legitimacy", "conjugal rights"
+    ],
+    "Corporate": [
+        "company", "corporate", "shareholder", "business", "director", "board",
+        "companies act", "LLP", "partnership", "merger", "acquisition",
+        "insolvency", "bankruptcy", "liquidation", "creditor", "debtor",
+        "security", "equity", "dividend", "stocks", "nclt", "roc"
+    ],
+    "Constitutional": [
+        "fundamental rights", "constitution", "writ petition", "article 14",
+        "article 21", "article 19", "supreme court", "high court", "judicial review",
+        "public interest litigation", "pil", "constitutional", "amendment",
+        "federal", "state", "centre", "legislature", "parliament"
+    ],
+    "Tax": [
+        "income tax", "gst", "tax", "excise", "customs", "vat", "assessment",
+        "itr", "deduction", "exemption", "refund", "penalty", "scrutiny",
+        "cbd", "taxable", "assessment year", "previous year", "tcs", "tds"
+    ],
+    "Labor & Employment": [
+        "labor", "labour", "employment", "workman", "industrial dispute",
+        "trade union", "strike", "lockout", "wages", "gratuity", "provident fund",
+        "epf", "esic", "termination", "retrenchment", "settlement", "conciliation"
+    ],
+    "Land & Revenue": [
+        "land acquisition", "revenue", "land records", "mutation", "patta",
+        "tenancy", "agricultural", "ceiling", "consolidation", "survey",
+        "settlement", "khasra", "khatauni", "jamabandi", "land reform"
+    ],
+    "Intellectual Property": [
+        "patent", "trademark", "copyright", "intellectual property", "ipr",
+        "infringement", "license", "royalty", "trade secret", "geographical indication",
+        "design", "brand", "logo", "creative work", "piracy"
+    ],
+    "Environmental": [
+        "environment", "pollution", "forest", "wildlife", "eco", "green tribunal",
+        "ngt", "environmental clearance", "hazardous", "waste", "air quality",
+        "water pollution", "biodiversity", "conservation", "sustainable"
+    ]
+}
+
+
+def classify_case_type(text: str) -> dict:
+    """
+    Classify the legal case type based on text content.
+
+    Returns a dict with:
+        - primary_type: The most likely case category
+        - confidence: Confidence score (0-100)
+        - all_scores: Breakdown of scores for all categories
+        - matched_keywords: Keywords that triggered the classification
+    """
+    if not text or len(text.strip()) < 20:
+        return {
+            "primary_type": "Unknown",
+            "confidence": 0,
+            "all_scores": {},
+            "matched_keywords": []
+        }
+
+    text_lower = text.lower()
+
+    # Score each category
+    scores = {}
+    matched = {}
+
+    for case_type, keywords in CASE_TYPE_KEYWORDS.items():
+        score = 0
+        matched_kw = []
+
+        for kw in keywords:
+            if kw.lower() in text_lower:
+                # Weight by keyword specificity (longer = more specific)
+                weight = len(kw.split()) if len(kw.split()) > 1 else 1
+                score += weight
+                matched_kw.append(kw.strip())
+
+        scores[case_type] = score
+        matched[case_type] = matched_kw
+
+    # Get total score for confidence calculation
+    total_score = sum(scores.values()) or 1
+
+    # Find primary type
+    if all(s == 0 for s in scores.values()):
+        return {
+            "primary_type": "Misc/Other",
+            "confidence": 0,
+            "all_scores": {},
+            "matched_keywords": []
+        }
+
+    sorted_types = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    primary_type, primary_score = sorted_types[0]
+
+    # Calculate confidence based on score distribution
+    confidence = round((primary_score / total_score) * 100, 1)
+
+    # Normalize scores to percentages
+    all_scores = {k: round((v / total_score) * 100, 1) if total_score > 0 else 0
+                  for k, v in scores.items() if v > 0}
+
+    return {
+        "primary_type": primary_type,
+        "confidence": min(confidence, 100),
+        "all_scores": dict(sorted(all_scores.items(), key=lambda x: x[1], reverse=True)[:5]),
+        "matched_keywords": matched[primary_type][:10]  # Top 10 matched keywords
+    }
+
+
+# ──────────────────────────────────────────────────────────────
+# Legal Document Analysis Features
+# ──────────────────────────────────────────────────────────────
+
+def extract_legal_issues(text: str) -> list[dict]:
+    """
+    Extract key legal issues/questions from a legal document.
+    Looks for patterns like "Issue:", "Question:", "Whether", etc.
+    """
+    if not text or len(text.strip()) < 100:
+        return []
+
+    issues = []
+    text_lower = text.lower()
+
+    # Pattern 1: Explicit issue markers
+    issue_patterns = [
+        r'issue[s]?\s*(?:\d+\.|\:|\-)\s*([^\n]+)',
+        r'question[s]?\s*(?:\d+\.|\:|\-)\s*([^\n]+)',
+        r'whether\s+([^.]+\.)',
+        r'the\s+question\s+(?:for\s+)?(?:consideration\s+)?(?:is|are)\s*(?:whether\s+)?([^.]+\.)',
+        r'point[s]?\s*(?:for\s+)?(?:determination|consideration)\s*(?:\d+\.|\:|\-)\s*([^\n]+)',
+    ]
+
+    for pattern in issue_patterns:
+        matches = re.finditer(pattern, text_lower, re.IGNORECASE)
+        for match in matches:
+            issue_text = match.group(1).strip()
+            if len(issue_text) > 20 and issue_text not in [i['issue'] for i in issues]:
+                issues.append({
+                    "issue": issue_text[0].upper() + issue_text[1:],
+                    "type": "explicit"
+                })
+
+    # Pattern 2: Infer issues from "contention" or "submission"
+    contention_pattern = r'(?:the\s+)?(?:petitioner|appellant|respondent|defendant|plaintiff)[\'"]?s?\s+(?:main|primary|key)?\s*(?:contention|submission|argument)\s*(?:is|was|that)\s*([^.]+\.)'
+    matches = re.finditer(contention_pattern, text_lower, re.IGNORECASE)
+    for match in matches:
+        issue_text = match.group(1).strip()
+        if len(issue_text) > 20 and issue_text not in [i['issue'] for i in issues]:
+            issues.append({
+                "issue": issue_text[0].upper() + issue_text[1:],
+                "type": "inferred"
+            })
+
+    return issues[:5]  # Limit to top 5 issues
+
+
+def extract_timeline(text: str) -> list[dict]:
+    """
+    Extract dates and events to build a case timeline.
+    Returns chronological list of {date, event} pairs.
+    """
+    if not text:
+        return []
+
+    from datetime import datetime
+
+    timeline = []
+
+    # Date patterns (Indian and international formats)
+    date_patterns = [
+        # DD/MM/YYYY or DD-MM-YYYY
+        r'(\d{1,2}[/\-]\d{1,2}[/\-]\d{4})',
+        # DD Month YYYY (e.g., 15 January 2023)
+        r'(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})',
+        # Month DD, YYYY (e.g., January 15, 2023)
+        r'((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4})',
+        # YYYY-MM-DD
+        r'(\d{4}[/\-]\d{1,2}[/\-]\d{1,2})',
+    ]
+
+    month_map = {
+        'january': 1, 'february': 2, 'march': 3, 'april': 4,
+        'may': 5, 'june': 6, 'july': 7, 'august': 8,
+        'september': 9, 'october': 10, 'november': 11, 'december': 12
+    }
+
+    def parse_date(date_str):
+        """Parse various date formats to datetime object."""
+        date_str = date_str.strip()
+
+        # DD/MM/YYYY or DD-MM-YYYY
+        match = re.match(r'(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})', date_str)
+        if match:
+            return datetime(int(match.group(3)), int(match.group(2)), int(match.group(1)))
+
+        # DD Month YYYY
+        match = re.match(r'(\d{1,2})\s+(\w+)\s+(\d{4})', date_str, re.IGNORECASE)
+        if match and match.group(2).lower() in month_map:
+            return datetime(int(match.group(3)), month_map[match.group(2).lower()], int(match.group(1)))
+
+        # Month DD, YYYY
+        match = re.match(r'(\w+)\s+(\d{1,2}),?\s+(\d{4})', date_str, re.IGNORECASE)
+        if match and match.group(1).lower() in month_map:
+            return datetime(int(match.group(3)), month_map[match.group(1).lower()], int(match.group(2)))
+
+        # YYYY-MM-DD
+        match = re.match(r'(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})', date_str)
+        if match:
+            return datetime(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+
+        return None
+
+    # Extract dates with surrounding context
+    for pattern in date_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            date_str = match.group(1)
+            parsed_date = parse_date(date_str)
+
+            if parsed_date:
+                # Get surrounding text as event description
+                start = max(0, match.start() - 50)
+                end = min(len(text), match.end() + 100)
+                context = text[start:end]
+
+                # Clean up context
+                context = re.sub(r'\s+', ' ', context).strip()
+                if len(context) > 150:
+                    context = context[:150] + '...'
+
+                # Avoid duplicates
+                if parsed_date not in [t['date_obj'] for t in timeline]:
+                    timeline.append({
+                        "date": parsed_date.strftime("%d %B %Y"),
+                        "date_obj": parsed_date,
+                        "event": context,
+                        "raw_date": date_str
+                    })
+
+    # Sort by date
+    timeline.sort(key=lambda x: x['date_obj'])
+
+    # Remove date_obj for final output
+    for t in timeline:
+        del t['date_obj']
+
+    return timeline[:15]  # Limit to 15 events
+
+
+def extract_monetary_claims(text: str) -> list[dict]:
+    """
+    Extract all monetary amounts mentioned in a legal document.
+    Returns list of {amount, context, type} objects.
+    """
+    if not text:
+        return []
+
+    amounts = []
+    seen_amounts = set()
+
+    # Patterns for Indian currency (₹, Rs., Rupees)
+    money_patterns = [
+        # ₹50,000 or ₹ 50,000
+        r'₹\s*([\d,]+(?:\.\d{2})?)',
+        # Rs. 50,000 or Rs 50,000
+        r'Rs\.?\s*([\d,]+(?:\.\d{2})?)',
+        # Rupees 50,000
+        r'Rupees\s*([\d,]+(?:\.\d{2})?)',
+        # INR 50,000
+        r'INR\s*([\d,]+(?:\.\d{2})?)',
+        # Fifty thousand rupees (word form - basic)
+        r'((?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|lakh|crore|\s)+)\s*rupees?',
+    ]
+
+    # Context keywords to classify the type of amount
+    type_keywords = {
+        'bribe': ['bribe', 'bribery', 'illegal gratification', 'illegal payment'],
+        'fine': ['fine', 'penalty', 'penalized'],
+        'compensation': ['compensation', 'damages', 'award', 'awarded'],
+        'disputed': ['disputed', 'claim', 'claimed', 'dispute'],
+        'salary': ['salary', 'wages', 'remuneration', 'emolument'],
+        'recovery': ['recovery', 'recovered', 'restitution'],
+    }
+
+    for pattern in money_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            raw_amount = match.group(1).strip() if match.lastindex else match.group(0)
+
+            # Convert word form to numeric (simplified)
+            if raw_amount.replace(' ', '').replace('lakh', '').replace('crore', '').replace('thousand', '').isalpha():
+                # Skip word-form amounts for now (complex to parse)
+                continue
+
+            # Clean numeric amount
+            clean_amount = raw_amount.replace(',', '')
+            try:
+                numeric = float(clean_amount)
+            except ValueError:
+                continue
+
+            # Format nicely
+            formatted = f"₹{int(numeric):,}" if numeric == int(numeric) else f"₹{numeric:,.2f}"
+
+            # Determine context/type
+            start = max(0, match.start() - 80)
+            end = min(len(text), match.end() + 50)
+            context = text[start:end].lower()
+
+            amount_type = 'amount'
+            for atype, keywords in type_keywords.items():
+                if any(kw in context for kw in keywords):
+                    amount_type = atype
+                    break
+
+            # Avoid duplicates
+            if formatted not in seen_amounts:
+                seen_amounts.add(formatted)
+                amounts.append({
+                    "amount": formatted,
+                    "numeric": numeric,
+                    "type": amount_type,
+                    "context": text[start:end].strip()[:100]
+                })
+
+    # Sort by amount (descending)
+    amounts.sort(key=lambda x: x['numeric'], reverse=True)
+
+    return amounts[:10]
+
+
+def extract_section_wise_summary(text: str) -> dict:
+    """
+    Break down a legal document into structured sections:
+    - Facts: What happened
+    - Issues: Legal questions
+    - Arguments: Contentions from both sides
+    - Reasoning: Court's analysis
+    - Order: Final judgment
+    """
+    if not text or len(text.strip()) < 200:
+        return {}
+
+    sections = {
+        "facts": "",
+        "issues": "",
+        "petitioner_arguments": "",
+        "respondent_arguments": "",
+        "reasoning": "",
+        "order": ""
+    }
+
+    text_lower = text.lower()
+
+    # Extract facts (usually early in the document)
+    facts_markers = ['brief facts', 'background', 'factual background', 'case background', 'the facts', 'facts of the case']
+    for marker in facts_markers:
+        if marker in text_lower:
+            start = text_lower.find(marker)
+            # Get text until next section marker
+            end_markers = ['issue', 'question', 'contention', 'submission', 'argument', 'hearing', 'order']
+            end = len(text)
+            for em in end_markers:
+                pos = text_lower.find(em, start + len(marker))
+                if pos != -1 and pos < end:
+                    end = pos
+            sections["facts"] = text[start:end].strip()
+            break
+
+    # Extract issues
+    issues_markers = ['issues', 'questions for consideration', 'points for determination', 'legal issues']
+    for marker in issues_markers:
+        if marker in text_lower:
+            start = text_lower.find(marker)
+            end = len(text)
+            for em in ['contention', 'submission', 'argument', 'hearing', 'order', 'reasoning']:
+                pos = text_lower.find(em, start + len(marker))
+                if pos != -1 and pos < end:
+                    end = pos
+            sections["issues"] = text[start:end].strip()
+            break
+
+    # Extract arguments
+    petitioner_markers = ['petitioner', 'appellant', 'plaintiff']
+    respondent_markers = ['respondent', 'defendant', 'opposite party']
+
+    for marker in petitioner_markers:
+        if f'{marker}s' in text_lower or f'{marker} contentions' in text_lower or f'{marker} submissions' in text_lower:
+            # Find the contentions/submissions section
+            for sub_marker in ['contention', 'submission', 'argument']:
+                pattern = f'{marker}[\'"]?s?\\s+{sub_marker}'
+                match = re.search(pattern, text_lower)
+                if match:
+                    start = match.start()
+                    end = min(text_lower.find('respondent', start), text_lower.find('court', start), text_lower.find('order', start))
+                    if end == -1:
+                        end = start + 500
+                    sections["petitioner_arguments"] = text[start:end].strip()
+                    break
+            break
+
+    for marker in respondent_markers:
+        if f'{marker}s' in text_lower or f'{marker} contentions' in text_lower or f'{marker} submissions' in text_lower:
+            for sub_marker in ['contention', 'submission', 'argument']:
+                pattern = f'{marker}[\'"]?s?\\s+{sub_marker}'
+                match = re.search(pattern, text_lower)
+                if match:
+                    start = match.start()
+                    end = min(text_lower.find('court', start), text_lower.find('order', start), text_lower.find('reasoning', start))
+                    if end == -1:
+                        end = start + 500
+                    sections["respondent_arguments"] = text[start:end].strip()
+                    break
+            break
+
+    # Extract reasoning
+    reasoning_markers = ['reasoning', 'analysis', 'court\'s analysis', 'discussion', 'consideration']
+    for marker in reasoning_markers:
+        if marker in text_lower:
+            start = text_lower.find(marker)
+            end = text_lower.find('order', start)
+            if end == -1:
+                end = start + 800
+            sections["reasoning"] = text[start:end].strip()
+            break
+
+    # Extract order
+    order_markers = ['order', 'judgment', 'decree', 'directions', 'disposed of', 'allowed', 'dismissed']
+    for marker in order_markers:
+        if marker in text_lower:
+            start = text_lower.rfind(marker)  # Use rfind for last occurrence
+            sections["order"] = text[start:start+500].strip()
+            break
+
+    # Clean up empty sections
+    sections = {k: v for k, v in sections.items() if v}
+
+    return sections
+
+
+def analyze_legal_document(text: str) -> dict:
+    """
+    Comprehensive legal document analysis.
+    Combines all extraction functions into one call.
+    """
+    return {
+        "case_type": classify_case_type(text),
+        "legal_issues": extract_legal_issues(text),
+        "timeline": extract_timeline(text),
+        "monetary_claims": extract_monetary_claims(text),
+        "sections": extract_section_wise_summary(text),
+        "citations": extract_citations(text)
+    }
+
+
+# ──────────────────────────────────────────────────────────────
 # Citation extraction
 # ──────────────────────────────────────────────────────────────
 
