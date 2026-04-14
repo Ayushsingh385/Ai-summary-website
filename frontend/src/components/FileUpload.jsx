@@ -38,7 +38,7 @@ const FileUpload = ({ onUpload }) => {
   });
 
   return (
-    <div className="fade-in">
+    <div>
       <div 
         {...getRootProps()} 
         className={`dropzone ${isDragActive ? 'active' : ''}`}
@@ -54,8 +54,8 @@ const FileUpload = ({ onUpload }) => {
         ) : (
           <div>
             <FiUploadCloud className="dropzone-icon" />
-            <h3>{isDragActive ? "Drop the Case File here" : "Drag & drop a Case File or Image"}</h3>
-            <p>or click to browse from your device (PDF, JPG, PNG)</p>
+            <h3>{isDragActive ? "Drop it here" : "Drop a document or image here"}</h3>
+            <p>or click to pick a file (works with PDF, JPG, and PNG)</p>
           </div>
         )}
       </div>

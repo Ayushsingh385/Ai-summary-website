@@ -5,7 +5,7 @@ import { chatWithBot } from '../api';
 const ChatBot = ({ documentText, keywords }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { id: 1, role: 'bot', text: 'Hi! I am your AI assistant. Ask me to find similar files, count cases, extract entities, or summarize this document into bullet points!' }
+    { id: 1, role: 'bot', text: 'Hi there. I can help you read through this case. Just ask me to summarize it, find names, or look for other files like this one.' }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -47,7 +47,7 @@ const ChatBot = ({ documentText, keywords }) => {
       <button 
         onClick={() => setIsOpen(true)}
         style={styles.floatingButton}
-        className="fade-in"
+        className=""
       >
         <FiMessageSquare size={24} />
       </button>
@@ -55,10 +55,10 @@ const ChatBot = ({ documentText, keywords }) => {
   }
 
   return (
-    <div style={styles.chatContainer} className="fade-in">
+    <div style={styles.chatContainer}>
       <div style={styles.chatHeader}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <FiMessageSquare /> <strong>AI Assistant</strong>
+          <FiMessageSquare /> <strong>Assistant</strong>
         </div>
         <button onClick={() => setIsOpen(false)} style={styles.closeBtn}><FiX size={20} /></button>
       </div>
@@ -82,7 +82,7 @@ const ChatBot = ({ documentText, keywords }) => {
         {isLoading && (
           <div style={{...styles.messageWrapper, justifyContent: 'flex-start'}}>
             <div style={{...styles.messageBubble, background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-muted)'}}>
-              Thinking...
+              Reading...
             </div>
           </div>
         )}
@@ -94,7 +94,7 @@ const ChatBot = ({ documentText, keywords }) => {
           type="text" 
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask a question..."
+          placeholder="Ask me anything about this file..."
           style={styles.input}
         />
         <button type="submit" disabled={!input.trim() || isLoading} style={styles.sendBtn}>
@@ -109,21 +109,21 @@ const styles = {
   floatingButton: {
     position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 9999,
     width: '60px', height: '60px', borderRadius: '50%',
-    background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))',
+    background: 'var(--accent-primary)',
     color: '#fff', border: 'none', cursor: 'pointer',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', transition: 'transform 0.2s ease'
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', transition: 'transform 0.1s ease'
   },
   chatContainer: {
     position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 9999,
     width: '350px', height: '500px', display: 'flex', flexDirection: 'column',
-    background: 'var(--bg-darker)', borderRadius: '16px',
-    border: '1px solid var(--panel-border)', boxShadow: '0 12px 48px rgba(0, 0, 0, 0.5)',
+    background: 'var(--bg-darker)', borderRadius: '12px',
+    border: '1px solid var(--panel-border)', boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
     overflow: 'hidden'
   },
   chatHeader: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '1rem', background: 'rgba(255, 255, 255, 0.05)',
+    padding: '1rem', background: 'var(--panel-bg)',
     borderBottom: '1px solid var(--panel-border)', color: 'var(--text-main)'
   },
   closeBtn: {
@@ -144,8 +144,8 @@ const styles = {
     display: 'flex', padding: '1rem', borderTop: '1px solid var(--panel-border)', gap: '0.5rem', background: 'var(--bg-darker)'
   },
   input: {
-    flex: 1, padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--panel-border)',
-    background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)', outline: 'none'
+    flex: 1, padding: '0.75rem', borderRadius: '6px', border: '1px solid var(--panel-border)',
+    background: 'var(--bg-dark)', color: 'var(--text-main)', outline: 'none'
   },
   sendBtn: {
     background: 'var(--accent-primary)', color: '#fff', border: 'none', borderRadius: '8px',

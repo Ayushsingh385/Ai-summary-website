@@ -29,24 +29,31 @@ _bart_load_attempted = False
 
 
 def _get_bart_pipeline():
-    """Load the BART summarization pipeline once, on first call."""
+    """Load the BART summarization model and tokenizer once, on first call."""
     global _bart_pipeline, _bart_load_attempted
 
     if _bart_load_attempted:
-        return _bart_pipeline  # May be None if loading failed earlier
+        return _bart_pipeline
 
     _bart_load_attempted = True
     try:
-        from transformers import pipeline as hf_pipeline
-        logger.info("Loading facebook/bart-large-cnn model (first request may take a minute)...")
+        from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline as hf_pipeline
+        logger.info("Loading facebook/bart-large-cnn components (first request may take a minute)...")
+        
+        # Load model and tokenizer directly to avoid 'Unknown task' registry errors
+        model_name = "facebook/bart-large-cnn"
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+        
         _bart_pipeline = hf_pipeline(
             "summarization",
-            model="facebook/bart-large-cnn",
+            model=model,
+            tokenizer=tokenizer,
             device=-1,  # CPU
         )
-        logger.info("BART model loaded successfully.")
+        logger.info("BART model loaded successfully via manual component loading.")
     except Exception as exc:
-        logger.warning("Could not load BART model — falling back to extractive: %s", exc)
+        logger.warning("Could not load BART model components — falling back to extractive: %s", exc)
         _bart_pipeline = None
 
     return _bart_pipeline

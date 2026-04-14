@@ -3,7 +3,7 @@ import { FiClock, FiFile, FiTag } from 'react-icons/fi';
 const ResultsPanel = ({ originalText, summaryResult, keywords, citations, activeTab, setActiveTab }) => {
 
   return (
-    <div className="glass-panel fade-in" style={{ marginTop: '2rem', padding: '1rem' }}>
+    <div className="glass-panel" style={{ marginTop: '2rem', padding: '1rem' }}>
       
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '1rem', paddingLeft: '1rem' }}>
@@ -12,14 +12,14 @@ const ResultsPanel = ({ originalText, summaryResult, keywords, citations, active
           onClick={() => setActiveTab('summary')}
           style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
         >
-          Case Summary
+          Read the summary
         </button>
         <button 
           className={`btn ${activeTab === 'original' ? 'btn-primary' : 'btn-outline'}`}
           onClick={() => setActiveTab('original')}
           style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
         >
-          Original Case Text
+          Read the full text
         </button>
       </div>
 
@@ -28,7 +28,7 @@ const ResultsPanel = ({ originalText, summaryResult, keywords, citations, active
         {/* Main Content Area */}
         <div className="result-card">
           <div className="result-header">
-            <h3>{activeTab === 'summary' ? 'Generated Case Summary' : 'Original Case Text'}</h3>
+            <h3>{activeTab === 'summary' ? 'The Summary' : 'Full Text'}</h3>
             {activeTab === 'summary' && summaryResult && (
               <span className="stats">
                 <FiFile style={{ display: 'inline', marginRight: '4px' }} />
@@ -49,20 +49,20 @@ const ResultsPanel = ({ originalText, summaryResult, keywords, citations, active
         {/* Info & Keywords Area */}
         <div className="result-card">
           <div className="result-header">
-            <h3>Case File Intelligence</h3>
+            <h3>Facts and key details</h3>
           </div>
           <div className="result-content" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             
             {/* Stats */}
             {summaryResult && (
               <div>
-                <h4 style={{ color: 'var(--text-main)', marginBottom: '0.5rem' }}>Statistics</h4>
+                <h4 style={{ color: 'var(--text-main)', marginBottom: '0.5rem' }}>Some stats</h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', color: 'var(--text-muted)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <FiFile /> Original length: {summaryResult.original_word_count} words
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <FiClock /> Compression: -{summaryResult.compression_ratio}%
+                    <FiClock /> Shortened by: {summaryResult.compression_ratio}%
                   </div>
                 </div>
               </div>
@@ -70,9 +70,9 @@ const ResultsPanel = ({ originalText, summaryResult, keywords, citations, active
 
             {/* Keywords */}
             {keywords && keywords.length > 0 && (
-              <div className="keywords-container fade-in">
+              <div className="keywords-container">
                 <h4 style={{ color: 'var(--text-main)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <FiTag /> Legal Entities & Key Terms
+                  <FiTag /> Names and important words
                 </h4>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
                   {keywords.map((kw, i) => (
@@ -86,9 +86,9 @@ const ResultsPanel = ({ originalText, summaryResult, keywords, citations, active
 
             {/* Citations */}
             {citations && citations.length > 0 && (
-              <div className="citations-container fade-in">
+              <div className="citations-container">
                 <h4 style={{ color: 'var(--text-main)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <FiFile /> Citations Identified
+                  <FiFile /> Referenced laws and cases
                 </h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {citations.map((cite, i) => (

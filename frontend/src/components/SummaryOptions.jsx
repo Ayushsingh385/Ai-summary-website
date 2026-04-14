@@ -4,20 +4,20 @@ const SummaryOptions = ({ selectedLength, onSelect, selectedLanguage, onLanguage
   const options = [
     {
       id: 'short',
-      title: 'Short',
-      desc: 'Quick overview (~50-100 words)',
+      title: 'Short overview',
+      desc: 'Just the absolute essentials.',
       icon: <FiCoffee size={24} className="text-gradient" />
     },
     {
       id: 'medium',
-      title: 'Medium',
-      desc: 'Balanced detail (~100-200 words)',
+      title: 'Balanced summary',
+      desc: 'The main points without the fluff.',
       icon: <FiFileText size={24} className="text-gradient" />
     },
     {
       id: 'long',
-      title: 'Detailed',
-      desc: 'In-depth summary (~200-400 words)',
+      title: 'Full details',
+      desc: 'Everything you need to know from the file.',
       icon: <FiBookOpen size={24} className="text-gradient" />
     }
   ];
@@ -48,7 +48,7 @@ const SummaryOptions = ({ selectedLength, onSelect, selectedLanguage, onLanguage
           </select>
         </div>
       </div>
-      <div className="options-container fade-in">
+      <div className="options-container">
         {options.map((opt) => (
           <div
             key={opt.id}

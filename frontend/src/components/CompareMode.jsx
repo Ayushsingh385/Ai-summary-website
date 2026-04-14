@@ -13,10 +13,10 @@ const CATEGORY_ICONS = {
 };
 
 const TEMPLATES = [
-  { value: '', label: '📄 Plain (Default)' },
-  { value: 'zp_official', label: '🏛️ Zilla Parishad Official' },
-  { value: 'court_order', label: '⚖️ Court Order Format' },
-  { value: 'general', label: '📋 General Administrative' },
+  { value: '', label: 'Plain (Default)' },
+  { value: 'zp_official', label: 'Zilla Parishad Official' },
+  { value: 'court_order', label: 'Court Order Format' },
+  { value: 'general', label: 'General Administrative' },
 ];
 
 const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
@@ -65,7 +65,7 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
   };
 
   const handleUploadFile1 = async (file) => {
-    setLoadingMsg('Extracting Document 1...');
+    setLoadingMsg('Reading the first file...');
     try {
       const res = await uploadPdf(file);
       setText1(res.text);
@@ -78,7 +78,7 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
   };
 
   const handleUploadFile2 = async (file) => {
-    setLoadingMsg('Extracting Document 2...');
+    setLoadingMsg('Reading the second file...');
     try {
       const res = await uploadPdf(file);
       setText2(res.text);
@@ -92,7 +92,7 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
 
   const runComparison = async () => {
     if (!text1 || !text2) return;
-    setLoadingMsg('Analyzing documents with AI... This may take a moment.');
+    setLoadingMsg('Analyzing the files now... This should only take a second.');
     try {
       const result = await compareDocuments(text1, text2, selectedLanguage);
       setComparisonResult(result);
@@ -150,7 +150,7 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
   const currentTemplateLabel = TEMPLATES.find(t => t.value === selectedTemplate)?.label || 'Plain (Default)';
 
   return (
-    <div className="fade-in">
+    <div>
       {loadingMsg && <LoadingSpinner message={loadingMsg} />}
       
       {errorMsg && (
@@ -163,7 +163,7 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
       {!comparisonResult && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
           <div>
-            <h3 style={{ marginBottom: '1rem', color: 'var(--text-main)', textAlign: 'center' }}>Document 1</h3>
+            <h3 style={{ marginBottom: '1rem', color: 'var(--text-main)', textAlign: 'center' }}>First file</h3>
             {text1 ? (
               <div style={{ padding: '2rem', background: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--success)', textAlign: 'center' }}>
                 <span style={{ color: 'var(--success)' }}>✓ Loaded: {filename1}</span>
@@ -173,7 +173,7 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
             )}
           </div>
           <div>
-            <h3 style={{ marginBottom: '1rem', color: 'var(--text-main)', textAlign: 'center' }}>Document 2</h3>
+            <h3 style={{ marginBottom: '1rem', color: 'var(--text-main)', textAlign: 'center' }}>Second file</h3>
             {text2 ? (
               <div style={{ padding: '2rem', background: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--success)', textAlign: 'center' }}>
                 <span style={{ color: 'var(--success)' }}>✓ Loaded: {filename2}</span>
@@ -188,7 +188,7 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
       {!comparisonResult && text1 && text2 && (
         <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
           <button className="btn" onClick={runComparison}>
-            Analyze & Compare
+            Compare these files
           </button>
         </div>
       )}
@@ -200,7 +200,7 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
           {/* Header Bar */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <button onClick={resetUploads} style={{ background: 'transparent', border: '1px solid var(--text-muted)', color: 'var(--text-main)', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>
-              Start New Comparison
+              Start over
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{filename1} vs {filename2}</span>
@@ -210,7 +210,7 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
 
           {/* AI Summary */}
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--panel-border)', borderRadius: '12px', padding: '2rem' }}>
-            <h2 style={{ color: 'var(--accent-primary)', marginBottom: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem' }}>AI Case Summaries</h2>
+            <h2 style={{ color: 'var(--accent-primary)', marginBottom: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem' }}>The Summary</h2>
             <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6', color: 'var(--text-main)' }}>
               {comparisonResult.comparison_summary}
             </div>
@@ -336,7 +336,7 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
           </div>
 
           {/* ── Export Comparison Bar ── */}
-          <div className="glass-panel fade-in" style={{
+          <div className="glass-panel" style={{
             padding: '1.5rem',
             display: 'flex',
             flexDirection: 'column',

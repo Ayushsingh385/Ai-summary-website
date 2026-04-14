@@ -42,12 +42,12 @@ const AuthPage = ({ onLogin }) => {
     <div style={styles.container}>
       <div style={styles.card}>
         <h2 style={styles.title}>
-          {isLogin ? 'Welcome Back' : 'Create an Account'}
+          {isLogin ? 'Welcome back' : 'Sign up'}
         </h2>
         <p style={styles.subtitle}>
           {isLogin 
-            ? 'Sign in to access your PDF summaries' 
-            : 'Join to start summarizing cases efficiently'}
+            ? 'Sign in to see your summaries.' 
+            : 'Create an account to start getting quick summaries of your legal cases.'}
         </p>
         
         {errorMsg && (
@@ -139,34 +139,31 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'linear-gradient(135deg, #1e1e2f 0%, #151522 100%)',
+    background: '#020617', /* Slate 950 */
     fontFamily: '"Inter", sans-serif',
     padding: '1rem'
   },
   card: {
     width: '100%',
-    maxWidth: '420px',
-    background: 'rgba(255, 255, 255, 0.03)',
-    backdropFilter: 'blur(16px)',
-    border: '1px solid rgba(255, 255, 255, 0.05)',
-    borderRadius: '16px',
+    maxWidth: '400px',
+    background: '#0f172a', /* Slate 900 */
+    border: '1px solid #1e293b',
+    borderRadius: '12px',
     padding: '2.5rem',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
     color: '#fff'
   },
   title: {
     margin: '0 0 0.5rem 0',
     fontSize: '1.75rem',
-    fontWeight: '600',
+    fontWeight: '700',
     textAlign: 'center',
-    background: 'linear-gradient(90deg, #bb86fc 0%, #3700b3 100%)',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent'
+    color: '#38bdf8' /* Sky 400 */
   },
   subtitle: {
     margin: '0 0 2rem 0',
     fontSize: '0.9rem',
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: '#94a3b8',
     textAlign: 'center'
   },
   form: {
@@ -181,48 +178,48 @@ const styles = {
   },
   label: {
     fontSize: '0.85rem',
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: '#cbd5e1',
     fontWeight: '500'
   },
   input: {
     padding: '0.8rem 1rem',
-    borderRadius: '8px',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    background: 'rgba(0, 0, 0, 0.2)',
+    borderRadius: '6px',
+    border: '1px solid #334155',
+    background: '#020617',
     color: '#fff',
     fontSize: '1rem',
     outline: 'none',
-    transition: 'border 0.3s ease'
+    transition: 'border-color 0.2s ease'
   },
   submitBtn: {
     marginTop: '1rem',
     padding: '0.85rem',
-    borderRadius: '8px',
+    borderRadius: '6px',
     border: 'none',
-    background: 'linear-gradient(90deg, #bb86fc 0%, #7f39fb 100%)',
+    background: '#38bdf8', /* Sky 400 */
     color: '#fff',
     fontSize: '1rem',
     fontWeight: '600',
     cursor: 'pointer',
-    transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+    transition: 'background 0.2s ease'
   },
   toggleText: {
     marginTop: '1.5rem',
     fontSize: '0.9rem',
     textAlign: 'center',
-    color: 'rgba(255, 255, 255, 0.6)'
+    color: '#94a3b8'
   },
   toggleLink: {
-    color: '#bb86fc',
+    color: '#38bdf8',
     cursor: 'pointer',
     fontWeight: '600',
-    textDecoration: 'underline'
+    textDecoration: 'none'
   },
   errorBox: {
     padding: '0.8rem',
-    borderRadius: '8px',
-    background: 'rgba(239, 68, 68, 0.1)',
-    border: '1px solid rgba(239, 68, 68, 0.3)',
+    borderRadius: '6px',
+    background: '#451a1a', /* Solid Red */
+    border: '1px solid #ef4444',
     color: '#fca5a5',
     marginBottom: '1.5rem',
     fontSize: '0.9rem',
@@ -230,9 +227,9 @@ const styles = {
   },
   successBox: {
     padding: '0.8rem',
-    borderRadius: '8px',
-    background: 'rgba(34, 197, 94, 0.1)',
-    border: '1px solid rgba(34, 197, 94, 0.3)',
+    borderRadius: '6px',
+    background: '#064e3b', /* Solid Green */
+    border: '1px solid #10b981',
     color: '#86efac',
     marginBottom: '1.5rem',
     fontSize: '0.9rem',

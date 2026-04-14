@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { FiDownload, FiFileText, FiChevronDown } from 'react-icons/fi';
 
 const TEMPLATES = [
-  { value: '', label: '📄 Plain (Default)' },
-  { value: 'zp_official', label: '🏛️ Zilla Parishad Official' },
-  { value: 'court_order', label: '⚖️ Court Order Format' },
-  { value: 'general', label: '📋 General Administrative' },
+  { value: '', label: 'Plain (Default)' },
+  { value: 'zp_official', label: 'Zilla Parishad Official' },
+  { value: 'court_order', label: 'Court Order Format' },
+  { value: 'general', label: 'General Administrative' },
 ];
 
 const DownloadBar = ({ onDownload, isDownloading, disabled, activeTab }) => {
@@ -15,7 +15,7 @@ const DownloadBar = ({ onDownload, isDownloading, disabled, activeTab }) => {
   const currentLabel = TEMPLATES.find(t => t.value === selectedTemplate)?.label || 'Plain (Default)';
 
   return (
-    <div className="glass-panel fade-in" style={{
+    <div className="glass-panel" style={{
       marginTop: '2rem',
       padding: '1.5rem',
       paddingBottom: '3rem', // Extra room for the template dropdown
@@ -24,7 +24,7 @@ const DownloadBar = ({ onDownload, isDownloading, disabled, activeTab }) => {
       alignItems: 'center',
       gap: '1rem'
     }}>
-      <h3 style={{ color: 'var(--text-main)' }}>Export Results</h3>
+      <h3 style={{ color: 'var(--text-main)' }}>Download your results</h3>
 
       {/* Template Selector */}
       <div style={{ position: 'relative', width: '260px' }}>
@@ -63,7 +63,7 @@ const DownloadBar = ({ onDownload, isDownloading, disabled, activeTab }) => {
         color: 'var(--text-muted)',
         marginTop: '-0.5rem',
       }}>
-        Template applies to DOCX exports only
+        The template only works for Word (.docx) files.
       </div>
 
       {/* Download buttons */}

@@ -32,31 +32,31 @@ const AnalyticsDashboard = () => {
   // Max count for scaling the entity bars
   const maxEntityCount = top_entities.length > 0 ? Math.max(...top_entities.map(e => e.count)) : 1;
 
-  // Colors for case types pie/stacked bar
-  const typeColors = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444'];
+  // Colors for case types - focused on professional slate/sky shades
+  const typeColors = ['#38bdf8', '#0ea5e9', '#0284c7', '#075985', '#0c4a6e'];
 
   return (
-    <div className="analytics-container fade-in">
+    <div className="analytics-container">
       <div className="analytics-header">
-        <h2>Advanced Analytics Dashboard</h2>
-        <p>Insights automatically derived from your document history using NLP.</p>
+        <h2>Case stats and trends</h2>
+        <p>Summary of information from all the files you've uploaded.</p>
       </div>
 
       <div className="analytics-stats-grid">
         <div className="stat-card glass-panel">
-          <h3>Total Documents Processed</h3>
+          <h3>Total files</h3>
           <div className="stat-value">{total_cases}</div>
         </div>
         <div className="stat-card glass-panel">
-          <h3>Overall Time Saved</h3>
-          <div className="stat-value text-gradient">
+          <h3>Average shortening</h3>
+          <div className="stat-value">
             {trends.length > 0 ? Math.round(trends.reduce((acc, curr) => acc + curr.compression_ratio, 0) / trends.length) : 0}%
           </div>
           <p className="stat-sub">Average compression ratio across recent files</p>
         </div>
         <div className="stat-card glass-panel">
-          <h3>Most Common Type</h3>
-          <div className="stat-value" style={{color: 'var(--accent-secondary)'}}>
+          <h3>Most common category</h3>
+          <div className="stat-value" style={{color: 'var(--accent-primary)'}}>
             {case_types.length > 0 ? case_types[0].type : "N/A"}
           </div>
         </div>
@@ -64,7 +64,7 @@ const AnalyticsDashboard = () => {
 
       <div className="analytics-main-grid">
         <div className="analytics-panel glass-panel">
-          <h3>Top extracted Entities (Names, Orgs, Locations)</h3>
+          <h3>Common names, places, and organizations</h3>
           <div className="entity-list">
             {top_entities.length > 0 ? top_entities.map((entity, idx) => (
               <div key={idx} className="entity-item">
@@ -84,7 +84,7 @@ const AnalyticsDashboard = () => {
         </div>
 
         <div className="analytics-panel glass-panel">
-          <h3>Case Category Distribution</h3>
+          <h3>Category breakdown</h3>
           
           <div className="stacked-bar-container">
             {case_types.map((ctype, idx) => (
@@ -114,7 +114,7 @@ const AnalyticsDashboard = () => {
       </div>
 
       <div className="analytics-panel glass-panel full-width">
-        <h3>Summary Length Efficiency Trends (Recent Cases)</h3>
+        <h3>How much each file was shortened (recent cases)</h3>
         <div className="trends-container">
           {trends.length > 0 ? trends.map((trend, idx) => (
             <div key={idx} className="trend-row">

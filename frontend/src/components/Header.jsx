@@ -4,7 +4,7 @@ import { FiBriefcase, FiClock, FiLogOut, FiUser, FiSun, FiMoon } from 'react-ico
 const Header = ({ onOpenHistory, onLogout, userProfile, theme, toggleTheme, isSidebarOpen }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   return (
-    <header className="fade-in" style={{ 
+    <header style={{ 
       textAlign: 'center', 
       marginBottom: '3rem', 
       position: 'relative', 
@@ -24,7 +24,7 @@ const Header = ({ onOpenHistory, onLogout, userProfile, theme, toggleTheme, isSi
           </button>
 
           {isMenuOpen && (
-            <div className="fade-in" style={{
+            <div style={{
               position: 'absolute',
               top: '120%',
               left: 0,
@@ -54,8 +54,8 @@ const Header = ({ onOpenHistory, onLogout, userProfile, theme, toggleTheme, isSi
                   }}
                   style={{
                     width: '100%',
-                    background: 'rgba(139, 92, 246, 0.15)',
-                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    background: 'var(--bg-dark)',
+                    border: '1px solid var(--panel-border)',
                     color: 'var(--text-main)',
                     padding: '0.6rem',
                     borderRadius: '6px',
@@ -67,8 +67,8 @@ const Header = ({ onOpenHistory, onLogout, userProfile, theme, toggleTheme, isSi
                     fontWeight: '600',
                     transition: 'all 0.2s ease'
                   }}
-                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.25)'}
-                  onMouseOut={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.15)'}
+                  onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--accent-primary)'}
+                  onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--panel-border)'}
                 >
                   {theme === 'dark' ? <><FiSun size={18} /> Switch to Light Mode</> : <><FiMoon size={18} /> Switch to Dark Mode</>}
                 </button>
@@ -110,10 +110,10 @@ const Header = ({ onOpenHistory, onLogout, userProfile, theme, toggleTheme, isSi
         <span>Zilla <span className="text-gradient">Parishad</span></span>
       </h1>
       <h2 style={{ fontSize: '1.5rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-        Legal Case Summarizer
+        Legal help for long documents
       </h2>
       <p style={{ marginTop: '0.5rem', color: 'var(--text-muted)' }}>
-        Instant, AI-powered analysis and summarization of legal case files.
+        Upload your legal files and we'll give you a summary of the facts and key details in seconds.
       </p>
     </header>
   );

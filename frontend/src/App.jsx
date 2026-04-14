@@ -71,7 +71,7 @@ function App() {
 
   const handleFileUpload = async (file) => {
     resetState();
-    setLoadingMsg('Extracting text from Case File...');
+    setLoadingMsg('Reading your file...');
     
     try {
       // 1. Upload & Extract
@@ -80,7 +80,7 @@ function App() {
       setFilename(uploadRes.filename || file.name);
       
       // 2. Extract Keywords (Parallel with summarization)
-      setLoadingMsg('Analyzing legal entities...');
+      setLoadingMsg('Looking for names...');
       const keywordsRes = await extractKeywords(uploadRes.text).catch(err => {
         console.warn("Keywords error:", err);
         return { keywords: [], citations: [] };
@@ -102,7 +102,7 @@ function App() {
     if (!textToSummarize) return;
     
     setLoadingMsg(
-      'Generating abstractive summary...\n(This utilizes an AI model and may take a few moments)'
+      'Writing your summary now. This might take a few seconds.'
     );
     try {
       const result = await summarizeText(textToSummarize, lengthOption, languageOption);
@@ -244,15 +244,14 @@ function App() {
       {isSidebarOpen && (
         <div 
           onClick={() => setIsSidebarOpen(false)}
-          className="fade-in"
+          className=""
           style={{
             position: 'fixed',
             top: 0,
             left: 0,
             right: 0,
             bottom: 0,
-            background: 'rgba(0,0,0,0.5)',
-            backdropFilter: 'blur(4px)',
+            background: 'rgba(0,0,0,0.7)', /* Solid dark overlay */
             zIndex: 1500,
             cursor: 'pointer'
           }}
@@ -261,18 +260,18 @@ function App() {
 
       <main>
         {/* Mode Toggle */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '2rem' }}>
+        <div className="no-print" style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '2rem' }}>
           <button 
             className={`btn btn-mode ${appMode === 'summarize' ? 'active-summarize' : ''}`} 
             onClick={() => { resetState(); setAppMode('summarize'); setHistoricalComparisonData(null); }}
           >
-            Summarize Case
+            Read one file
           </button>
           <button 
             className={`btn btn-mode ${appMode === 'compare' ? 'active-compare' : ''}`} 
             onClick={() => { resetState(); setAppMode('compare'); setHistoricalComparisonData(null); }}
           >
-            Compare Documents
+            Compare two files
           </button>
         </div>
 
@@ -283,7 +282,7 @@ function App() {
         ) : (
           <>
             {/* Upload & Analytics Section */}
-            <section style={{ 
+            <section className="no-print" style={{ 
               marginBottom: '1rem', 
               display: 'flex', 
               flexDirection: 'column', 
@@ -291,23 +290,23 @@ function App() {
             }}>
               <FileUpload onUpload={handleFileUpload} />
               
-              <div className="fade-in">
+              <div>
                 <div 
                   className="dropzone analytics"
                   onClick={() => { resetState(); setAppMode('analytics'); setHistoricalComparisonData(null); }}
                   style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '110px' }}
                 >
                   <FiPieChart className="dropzone-icon" />
-                  <h3>Advanced Analytics Dashboard</h3>
-                  <p>Explore case trends, common legal entities, and statistics.</p>
+                  <h3>Case stats and trends</h3>
+                  <p>See common names, dates, and patterns across all your uploads.</p>
                 </div>
               </div>
             </section>
 
             {/* Error Handling */}
             {errorMsg && (
-              <div className="fade-in" style={{
-                background: 'rgba(239, 68, 68, 0.1)',
+              <div style={{
+                background: '#451a1a', 
                 border: '1px solid var(--danger)',
                 padding: '1rem',
                 borderRadius: '8px',
@@ -321,8 +320,8 @@ function App() {
 
             {/* Main Content Areas */}
             {originalText && (
-              <div className="fade-in">
-                <h3 style={{ textAlign: 'center', marginBottom: '1rem' }}>Customize Case Summary Length</h3>
+              <div>
+                <h3 className="no-print" style={{ textAlign: 'center', marginBottom: '1rem' }}>How detailed should the summary be?</h3>
                 <SummaryOptions 
                   selectedLength={selectedLength} 
                   onSelect={onLengthChange} 
@@ -340,12 +339,14 @@ function App() {
                 />
 
                 {(summaryResult || originalText) && (
-                  <DownloadBar 
-                    onDownload={handleDownload} 
-                    isDownloading={isDownloading} 
-                    disabled={!!loadingMsg}
-                    activeTab={activeTab}
-                  />
+                  <div className="no-print">
+                    <DownloadBar 
+                      onDownload={handleDownload} 
+                      isDownloading={isDownloading} 
+                      disabled={!!loadingMsg}
+                      activeTab={activeTab}
+                    />
+                  </div>
                 )}
               </div>
             )}
@@ -353,7 +354,9 @@ function App() {
         )}
       </main>
 
-      <ChatBot documentText={originalText} keywords={keywords} />
+      <div className="no-print">
+        <ChatBot documentText={originalText} keywords={keywords} />
+      </div>
     </div>
   );
 }
