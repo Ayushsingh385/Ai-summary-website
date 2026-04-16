@@ -53,8 +53,38 @@ def _get_bart_pipeline():
         )
         logger.info("BART model loaded successfully via manual component loading.")
     except Exception as exc:
-        logger.warning("Could not load BART model components — falling back to extractive: %s", exc)
-        _bart_pipeline = None
+        logger.warning("Could not load BART pipeline — attempting direct model use: %s", exc)
+        try:
+            # Fallback for when 'summarization' task is not in registry
+            # We already have model and tokenizer from above in the local scope? 
+            # Wait, I need to make sure they are available here.
+            from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+            model_name = "facebook/bart-large-cnn"
+            m_tokenizer = AutoTokenizer.from_pretrained(model_name)
+            m_model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+            
+            class SimpleBART:
+                def __init__(self, model, tokenizer):
+                    self.model = model
+                    self.tokenizer = tokenizer
+                def __call__(self, text, **kwargs):
+                    # Basic implementation of summarization generation
+                    inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=1024)
+                    summary_ids = self.model.generate(
+                        inputs["input_ids"],
+                        max_length=kwargs.get("max_length", 142),
+                        min_length=kwargs.get("min_length", 30),
+                        do_sample=kwargs.get("do_sample", False),
+                        early_stopping=True,
+                        num_beams=4
+                    )
+                    return [{"summary_text": self.tokenizer.decode(summary_ids[0], skip_special_tokens=True)}]
+            
+            _bart_pipeline = SimpleBART(m_model, m_tokenizer)
+            logger.info("BART model loaded successfully via direct wrapper.")
+        except Exception as fallback_exc:
+            logger.error("Total BART failure: %s", fallback_exc)
+            _bart_pipeline = None
 
     return _bart_pipeline
 

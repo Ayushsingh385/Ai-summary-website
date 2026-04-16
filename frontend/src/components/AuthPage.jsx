@@ -139,31 +139,31 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: '#020617', /* Slate 950 */
+    background: 'var(--bg-darker)',
     fontFamily: '"Inter", sans-serif',
     padding: '1rem'
   },
   card: {
     width: '100%',
     maxWidth: '400px',
-    background: '#0f172a', /* Slate 900 */
-    border: '1px solid #1e293b',
+    background: 'var(--bg-dark)',
+    border: '1px solid var(--panel-border)',
     borderRadius: '12px',
     padding: '2.5rem',
     boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
-    color: '#fff'
+    color: 'var(--text-main)'
   },
   title: {
     margin: '0 0 0.5rem 0',
     fontSize: '1.75rem',
     fontWeight: '700',
     textAlign: 'center',
-    color: '#38bdf8' /* Sky 400 */
+    color: 'var(--accent-primary)'
   },
   subtitle: {
     margin: '0 0 2rem 0',
     fontSize: '0.9rem',
-    color: '#94a3b8',
+    color: 'var(--text-muted)',
     textAlign: 'center'
   },
   form: {
@@ -178,15 +178,15 @@ const styles = {
   },
   label: {
     fontSize: '0.85rem',
-    color: '#cbd5e1',
+    color: 'var(--text-main)',
     fontWeight: '500'
   },
   input: {
     padding: '0.8rem 1rem',
     borderRadius: '6px',
-    border: '1px solid #334155',
-    background: '#020617',
-    color: '#fff',
+    border: '1px solid var(--panel-border)',
+    background: 'var(--bg-darker)',
+    color: 'var(--text-main)',
     fontSize: '1rem',
     outline: 'none',
     transition: 'border-color 0.2s ease'
@@ -196,7 +196,7 @@ const styles = {
     padding: '0.85rem',
     borderRadius: '6px',
     border: 'none',
-    background: '#38bdf8', /* Sky 400 */
+    background: 'var(--accent-primary)',
     color: '#fff',
     fontSize: '1rem',
     fontWeight: '600',
@@ -207,10 +207,10 @@ const styles = {
     marginTop: '1.5rem',
     fontSize: '0.9rem',
     textAlign: 'center',
-    color: '#94a3b8'
+    color: 'var(--text-muted)'
   },
   toggleLink: {
-    color: '#38bdf8',
+    color: 'var(--accent-primary)',
     cursor: 'pointer',
     fontWeight: '600',
     textDecoration: 'none'
@@ -218,9 +218,9 @@ const styles = {
   errorBox: {
     padding: '0.8rem',
     borderRadius: '6px',
-    background: '#451a1a', /* Solid Red */
-    border: '1px solid #ef4444',
-    color: '#fca5a5',
+    background: 'rgba(239, 68, 68, 0.1)',
+    border: '1px solid var(--danger)',
+    color: 'var(--danger)',
     marginBottom: '1.5rem',
     fontSize: '0.9rem',
     textAlign: 'center'
@@ -228,9 +228,9 @@ const styles = {
   successBox: {
     padding: '0.8rem',
     borderRadius: '6px',
-    background: '#064e3b', /* Solid Green */
-    border: '1px solid #10b981',
-    color: '#86efac',
+    background: 'rgba(16, 185, 129, 0.1)',
+    border: '1px solid var(--success)',
+    color: 'var(--success)',
     marginBottom: '1.5rem',
     fontSize: '0.9rem',
     textAlign: 'center'

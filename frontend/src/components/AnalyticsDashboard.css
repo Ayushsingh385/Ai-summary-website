@@ -27,10 +27,13 @@
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
 }
 
 .stat-card h3 {
-  font-size: 1rem;
+  font-size: 0.8rem;
   color: var(--text-muted);
   margin-bottom: 0.5rem;
   text-transform: uppercase;
@@ -64,6 +67,9 @@
 
 .analytics-panel {
   padding: 1.5rem;
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
 }
 
 .analytics-panel.full-width {
@@ -116,9 +122,8 @@
   background: var(--accent-primary);
   border-radius: 4px;
   transition: width 1s cubic-bezier(0.17, 0.67, 0.83, 0.67);
-  box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
 }
-
 
 /* Stacked Bar */
 .stacked-bar-container {
@@ -128,6 +133,7 @@
   overflow: hidden;
   border: 1px solid var(--panel-border);
   margin-bottom: 2rem;
+  background: var(--bg-darker);
 }
 
 .stacked-bar-segment {
@@ -210,12 +216,12 @@
   position: absolute;
   top: 0;
   left: 0;
-  border-right: 1px solid rgba(0,0,0,0.2);
+  border-right: 1px solid rgba(0,0,0,0.1);
 }
 
 .original-bar {
   width: 100%;
-  background: rgba(255,255,255,0.1);
+  background: var(--bg-dark);
   color: var(--text-muted);
   justify-content: flex-end;
   z-index: 1;
@@ -226,9 +232,8 @@
   color: white;
   z-index: 2;
   transition: width 1s cubic-bezier(0.17, 0.67, 0.83, 0.67);
-  box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+  box-shadow: 2px 0 10px rgba(0,0,0,0.2);
 }
-
 
 .trend-efficiency {
   width: 70px;
@@ -236,18 +241,19 @@
 }
 
 .efficiency-badge {
-  background: rgba(16, 185, 129, 0.2);
-  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--success);
   padding: 0.3rem 0.6rem;
+  border: 1px solid rgba(16, 185, 129, 0.2);
   border-radius: 4px;
   font-size: 0.8rem;
   font-weight: bold;
 }
 
 .analytics-error {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.05);
+  border: 1px solid var(--danger);
   padding: 2rem;
   text-align: center;
   border-radius: 8px;

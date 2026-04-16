@@ -1,8 +1,26 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { FiBriefcase, FiClock, FiLogOut, FiUser, FiSun, FiMoon } from 'react-icons/fi';
 
 const Header = ({ onOpenHistory, onLogout, userProfile, theme, toggleTheme, isSidebarOpen }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsMenuOpen(false);
+      }
+    };
+    
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMenuOpen]);
+
   return (
     <header style={{ 
       textAlign: 'center', 
@@ -15,7 +33,7 @@ const Header = ({ onOpenHistory, onLogout, userProfile, theme, toggleTheme, isSi
       
       {/* Top Left User Menu */}
       {userProfile && (
-        <div style={{ position: 'absolute', top: 0, left: 0, textAlign: 'left', zIndex: 100 }}>
+        <div ref={menuRef} style={{ position: 'absolute', top: 0, left: 0, textAlign: 'left', zIndex: 100 }}>
           <button 
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             className="header-btn"

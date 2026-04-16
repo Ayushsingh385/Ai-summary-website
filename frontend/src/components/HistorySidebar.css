@@ -4,14 +4,14 @@
   left: -350px;
   width: 350px;
   height: 100vh;
-  background: #020617; /* Solid Slate 950 */
+  background: var(--bg-darker);
   border-right: 1px solid var(--panel-border);
   box-shadow: 10px 0 50px rgba(0, 0, 0, 0.5);
   z-index: 2000;
   transition: left 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   display: flex;
   flex-direction: column;
-  color: white;
+  color: var(--text-main);
   padding: 1.5rem;
 }
 
@@ -24,7 +24,7 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1.5rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--panel-border);
   padding-bottom: 1rem;
 }
 
@@ -38,7 +38,7 @@
 .close-btn {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--text-muted);
   font-size: 1.5rem;
   cursor: pointer;
   padding: 0;
@@ -47,7 +47,7 @@
 }
 
 .close-btn:hover {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .search-form {
@@ -58,9 +58,9 @@
 
 .search-form input {
   flex: 1;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-border);
+  color: var(--text-main);
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
   font-size: 0.9rem;
@@ -69,15 +69,14 @@
 }
 
 .search-form input:focus {
-  border-color: #3b82f6;
-  background: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
 }
 
 .search-form button {
-  background: rgba(59, 130, 246, 0.2);
-  border: 1px solid rgba(59, 130, 246, 0.5);
-  color: #60a5fa;
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-border);
+  color: var(--accent-primary);
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
   cursor: pointer;
@@ -86,7 +85,7 @@
 }
 
 .search-form button:hover:not(:disabled) {
-  background: rgba(59, 130, 246, 0.4);
+  background: var(--accent-primary);
   color: white;
 }
 
@@ -101,28 +100,23 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  padding-right: 0.5rem; /* For scrollbar */
+  padding-right: 0.5rem;
 }
 
-/* Custom scrollbar */
 .history-list::-webkit-scrollbar {
   width: 6px;
 }
 .history-list::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 3px;
+  background: transparent;
 }
 .history-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--panel-border);
   border-radius: 3px;
-}
-.history-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
 }
 
 .history-item {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-border);
   border-radius: 8px;
   padding: 1rem;
   cursor: pointer;
@@ -134,10 +128,9 @@
 }
 
 .history-item:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: var(--accent-primary);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .history-item-content {
@@ -149,7 +142,7 @@
   margin: 0 0 0.5rem 0;
   font-size: 0.95rem;
   font-weight: 500;
-  color: #f8fafc;
+  color: var(--text-main);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -159,11 +152,11 @@
   display: flex;
   gap: 0.75rem;
   font-size: 0.8rem;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 .match-score {
-  color: #10b981;
+  color: var(--success);
   font-weight: 500;
 }
 
@@ -172,33 +165,34 @@
   border: none;
   padding: 0.25rem;
   cursor: pointer;
-  opacity: 0.3;
+  opacity: 0.5;
   transition: all 0.2s;
   font-size: 1rem;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 4px;
+  color: var(--text-muted);
 }
-
-
 
 .delete-btn:hover {
   opacity: 1 !important;
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
   transform: scale(1.1);
 }
 
 .sidebar-loading, .sidebar-empty, .sidebar-error {
   text-align: center;
   padding: 2rem;
-  color: #64748b;
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
 .sidebar-error {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.05);
+  border: 1px solid var(--danger);
   border-radius: 6px;
   padding: 1rem;
   margin-bottom: 1rem;
