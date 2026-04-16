@@ -37,7 +37,7 @@ export const fetchProfile = async () => {
 };
 
 export const chatWithBot = async (query, documentText = null, keywords = null) => {
-  const response = await axios.post(`http://localhost:8000/api/chat/`, {
+  const response = await api.post('/chat/', {
     query,
     document_text: documentText,
     document_keywords: keywords
@@ -48,9 +48,8 @@ export const chatWithBot = async (query, documentText = null, keywords = null) =
 export const uploadPdf = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
-  const response = await api.post('/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
+  // Remove manual 'Content-Type' header so Axios/browser sets it correctly with the boundary string
+  const response = await api.post('/upload', formData);
   return response.data;
 };
 

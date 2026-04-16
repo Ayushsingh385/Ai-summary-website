@@ -109,7 +109,12 @@ function App() {
       await handleSummarize(uploadRes.text, selectedLength, uploadRes.filename || file.name, keywordsRes.keywords);
 
     } catch (err) {
-      setErrorMsg(err.response?.data?.detail || err.message || 'Error processing file.');
+      const detail = err.response?.data?.detail;
+      const message = err.message === 'Network Error' 
+        ? 'Network Error: Please check if the backend server is running and reachable.' 
+        : (detail || err.message || 'Error processing file.');
+      setErrorMsg(message);
+      console.error("Upload error:", err);
     } finally {
       setLoadingMsg('');
     }

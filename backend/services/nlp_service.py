@@ -120,18 +120,18 @@ def _get_spacy_nlp():
 # Summary length presets
 # ──────────────────────────────────────────────────────────────
 
-# BART length params  (max_length, min_length)
+# BART length params (max_length, min_length)
 BART_LENGTHS = {
-    "short":  (80,  30),
-    "medium": (200, 80),
-    "long":   (400, 150),
+    "short":  (100, 50),
+    "medium": (190, 150),
+    "long":   (300, 250),
 }
 
 # Extractive fallback: target sentence count
 EXTRACTIVE_LENGTHS = {
-    "short":  3,
-    "medium": 7,
-    "long":   15,
+    "short":  5,
+    "medium": 10,
+    "long":   16,
 }
 
 # BART handles at most ~1024 tokens.  We use a conservative character

@@ -17,8 +17,7 @@ const DownloadBar = ({ onDownload, isDownloading, disabled, activeTab }) => {
   return (
     <div className="glass-panel" style={{
       marginTop: '2rem',
-      padding: '1.5rem',
-      paddingBottom: '3rem', // Extra room for the template dropdown
+      padding: '1.5rem 1.5rem 2.5rem 1.5rem',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
