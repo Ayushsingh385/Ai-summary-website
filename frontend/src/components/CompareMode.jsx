@@ -187,7 +187,7 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
 
       {!comparisonResult && text1 && text2 && (
         <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-          <button className="btn" onClick={runComparison}>
+          <button className="btn btn-secondary" onClick={runComparison}>
             Compare these files
           </button>
         </div>
