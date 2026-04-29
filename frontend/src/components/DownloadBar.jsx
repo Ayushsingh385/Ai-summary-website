@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { FiDownload, FiFileText, FiChevronDown } from 'react-icons/fi';
 
 const TEMPLATES = [
@@ -11,6 +11,22 @@ const TEMPLATES = [
 const DownloadBar = ({ onDownload, isDownloading, disabled, activeTab }) => {
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowTemplateMenu(false);
+      }
+    };
+
+    if (showTemplateMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showTemplateMenu]);
 
   const currentLabel = TEMPLATES.find(t => t.value === selectedTemplate)?.label || 'Plain (Default)';
 
@@ -26,7 +42,7 @@ const DownloadBar = ({ onDownload, isDownloading, disabled, activeTab }) => {
       <h3 style={{ color: 'var(--text-main)' }}>Download your results</h3>
 
       {/* Template Selector */}
-      <div style={{ position: 'relative', width: '260px' }}>
+      <div ref={dropdownRef} style={{ position: 'relative', width: '260px' }}>
         <button
           onClick={() => setShowTemplateMenu(!showTemplateMenu)}
           className="select-trigger"

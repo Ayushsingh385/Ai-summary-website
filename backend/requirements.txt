@@ -26,3 +26,8 @@ pytesseract
 pdf2image
 Pillow
 deep-translator
+
+# LLM Providers (install at least one)
+openai>=1.0.0
+anthropic>=0.18.0
+google-generativeai>=0.3.0

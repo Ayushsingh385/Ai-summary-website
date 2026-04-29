@@ -1,18 +1,24 @@
 import React, { useEffect, useState } from 'react';
-import { fetchAnalytics } from '../api';
+import { fetchAnalytics, fetchHistory } from '../api';
 import './AnalyticsDashboard.css';
 import LoadingSpinner from './LoadingSpinner';
 
-const AnalyticsDashboard = () => {
+const AnalyticsDashboard = ({ onSelectCase }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [recentCases, setRecentCases] = useState([]);
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const result = await fetchAnalytics();
-        setData(result);
+        const [analyticsResult, historyResult] = await Promise.all([
+          fetchAnalytics(),
+          fetchHistory()
+        ]);
+        setData(analyticsResult);
+        // Take last 5 cases from history (already sorted newest first)
+        setRecentCases(historyResult.slice(0, 5));
       } catch (err) {
         setError('Failed to fetch analytics. Please run the backend server.');
         console.error(err);
@@ -41,6 +47,40 @@ const AnalyticsDashboard = () => {
         <h2>Case stats and trends</h2>
         <p>Summary of information from all the files you've uploaded.</p>
       </div>
+
+      {recentCases.length > 0 && (
+        <div className="glass-panel" style={{ marginBottom: '1.5rem', padding: '1rem' }}>
+          <h3 style={{ marginBottom: '0.75rem', color: 'var(--text-main)' }}>Recent activity</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {recentCases.map((c) => (
+              <div
+                key={c.id}
+                onClick={() => onSelectCase && onSelectCase(c)}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '0.5rem 0.75rem',
+                  background: 'var(--bg-card)',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  border: '1px solid var(--panel-border)',
+                  transition: 'border-color 0.2s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent-primary)'}
+                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--panel-border)'}
+              >
+                <span style={{ fontWeight: '500', color: 'var(--text-main)', fontSize: '0.9rem' }}>
+                  {c.filename || 'Untitled Case'}
+                </span>
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                  {new Date(c.created_at).toLocaleDateString()} {new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="analytics-stats-grid">
         <div className="stat-card glass-panel">

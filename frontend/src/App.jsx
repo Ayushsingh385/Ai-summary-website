@@ -13,6 +13,10 @@ import ChatBot from './components/ChatBot';
 import CompareMode from './components/CompareMode';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import LegalAnalysis from './components/LegalAnalysis';
+import TagsEditor from './components/TagsEditor';
+import DocumentVault from './components/DocumentVault';
+import BatchUpload from './components/BatchUpload';
+import BriefGenerator from './components/BriefGenerator';
 import { FiPieChart } from 'react-icons/fi';
 
 function App() {
@@ -54,13 +58,17 @@ function App() {
   const [citations, setCitations] = useState([]);
   const [caseType, setCaseType] = useState(null);
   const [legalAnalysis, setLegalAnalysis] = useState(null);
+  const [currentCaseId, setCurrentCaseId] = useState(null);
+  const [currentTags, setCurrentTags] = useState([]);
   
   // UI State
-  const [appMode, setAppMode] = useState('summarize'); // 'summarize' | 'compare' | 'analytics'
+  const [appMode, setAppMode] = useState('summarize'); // 'summarize' | 'compare' | 'analytics' | 'vault' | 'batch'
   const [selectedLength, setSelectedLength] = useState('medium');
   const [selectedLanguage, setSelectedLanguage] = useState('en');
   const [isDownloading, setIsDownloading] = useState(false);
   const [activeTab, setActiveTab] = useState('summary');
+  const [cameFromBatch, setCameFromBatch] = useState(false);
+  const [batchFiles, setBatchFiles] = useState([]); // persist across mode switches
 
   const resetState = () => {
     setOriginalText('');
@@ -70,6 +78,8 @@ function App() {
     setCitations([]);
     setCaseType(null);
     setLegalAnalysis(null);
+    setCurrentCaseId(null);
+    setCurrentTags([]);
     setErrorMsg('');
     setActiveTab('summary');
   };
@@ -79,34 +89,42 @@ function App() {
     setLoadingMsg('Reading your file...');
 
     try {
-      // 1. Upload & Extract
+      // 1. Upload & Extract — show text immediately
       const uploadRes = await uploadPdf(file);
       setOriginalText(uploadRes.text);
       setFilename(uploadRes.filename || file.name);
 
-      // 2. Extract Keywords, Classify Case Type, and Analyze (in parallel)
-      setLoadingMsg('Analyzing document...');
-      const [keywordsRes, classifyRes, analysisRes] = await Promise.all([
-        extractKeywords(uploadRes.text).catch(err => {
-          console.warn("Keywords error:", err);
-          return { keywords: [], citations: [] };
-        }),
-        classifyCase(uploadRes.text).catch(err => {
-          console.warn("Classify error:", err);
-          return null;
-        }),
-        analyzeDocument(uploadRes.text).catch(err => {
-          console.warn("Analysis error:", err);
-          return null;
-        })
-      ]);
-      setKeywords(keywordsRes.keywords || []);
-      setCitations(keywordsRes.citations || []);
-      setCaseType(classifyRes);
-      setLegalAnalysis(analysisRes);
+      // 2. Fire all analysis + summarization in parallel, update UI as each completes
+      setLoadingMsg('Analyzing and summarizing...');
 
-      // 3. Summarize
-      await handleSummarize(uploadRes.text, selectedLength, uploadRes.filename || file.name, keywordsRes.keywords);
+      // Keywords
+      extractKeywords(uploadRes.text)
+        .then(res => { setKeywords(res.keywords || []); setCitations(res.citations || []); })
+        .catch(err => console.warn("Keywords error:", err));
+
+      // Classify
+      classifyCase(uploadRes.text)
+        .then(res => setCaseType(res))
+        .catch(err => console.warn("Classify error:", err));
+
+      // Legal analysis
+      analyzeDocument(uploadRes.text)
+        .then(res => setLegalAnalysis(res))
+        .catch(err => console.warn("Analysis error:", err));
+
+      // Summarize (slowest — await it to clear the loading spinner)
+      const summaryRes = await summarizeText(uploadRes.text, selectedLength, selectedLanguage).catch(err => {
+        console.warn("Summarize error:", err);
+        return null;
+      });
+
+      if (summaryRes) {
+        setSummaryResult(summaryRes);
+        const fname = uploadRes.filename || file.name;
+        saveCase(fname, uploadRes.text, summaryRes.summary, keywords, summaryRes.original_stats || {}, [], 'new', caseType)
+          .then(res => { if (res.case_id) setCurrentCaseId(res.case_id); })
+          .catch(err => console.warn('Background save to DB failed:', err));
+      }
 
     } catch (err) {
       const detail = err.response?.data?.detail;
@@ -120,7 +138,7 @@ function App() {
     }
   };
 
-  const handleSummarize = async (textToSummarize, lengthOption, languageOption = selectedLanguage, currentFilename = filename, currentKeywords = keywords) => {
+  const handleSummarize = async (textToSummarize, lengthOption, languageOption = selectedLanguage, currentFilename = filename, currentKeywords = keywords, currentCaseType = null) => {
     if (!textToSummarize) return;
     
     setLoadingMsg(
@@ -137,8 +155,13 @@ function App() {
           textToSummarize,
           result.summary,
           currentKeywords,
-          result.original_stats || {}
-        ).catch(err => console.warn('Background save to DB failed:', err));
+          result.original_stats || {},
+          [],
+          'new',
+          currentCaseType
+        ).then(res => {
+          if (res.case_id) setCurrentCaseId(res.case_id);
+        }).catch(err => console.warn('Background save to DB failed:', err));
       }
     } catch (err) {
       setErrorMsg(err.response?.data?.detail || err.message || 'Error generating summary.');
@@ -152,6 +175,8 @@ function App() {
     setFilename(caseItem.filename || "");
     setKeywords(caseItem.keywords || []);
     setCitations([]);
+    setCurrentCaseId(caseItem.id);
+    setCurrentTags(caseItem.tags || []);
 
     setSummaryResult({
       summary: caseItem.summary_text || "",
@@ -293,39 +318,94 @@ function App() {
       <main>
         {/* Mode Toggle */}
         <div className="no-print" style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '2rem' }}>
-          <button 
-            className={`btn btn-mode ${appMode === 'summarize' ? 'active-summarize' : ''}`} 
-            onClick={() => { resetState(); setAppMode('summarize'); setHistoricalComparisonData(null); }}
+          <button
+            className={`btn btn-mode ${appMode === 'summarize' ? 'active-summarize' : ''}`}
+            onClick={() => { setAppMode('summarize'); setHistoricalComparisonData(null); }}
           >
             Read one file
           </button>
-          <button 
-            className={`btn btn-mode ${appMode === 'compare' ? 'active-compare' : ''}`} 
-            onClick={() => { resetState(); setAppMode('compare'); setHistoricalComparisonData(null); }}
+          <button
+            className={`btn btn-mode ${appMode === 'batch' ? 'active-batch' : ''}`}
+            onClick={() => { setAppMode('batch'); }}
+          >
+            Batch upload
+          </button>
+          {cameFromBatch && (
+            <button
+              className="btn btn-outline"
+              onClick={() => {
+                setAppMode('batch');
+                setCameFromBatch(false);
+              }}
+              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+            >
+              ← Back to batch ({batchFiles.length} files)
+            </button>
+          )}
+          <button
+            className={`btn btn-mode ${appMode === 'compare' ? 'active-compare' : ''}`}
+            onClick={() => { setAppMode('compare'); setHistoricalComparisonData(null); }}
           >
             Compare two files
+          </button>
+          <button
+            className={`btn btn-mode ${appMode === 'vault' ? 'active-workflow' : ''}`}
+            onClick={() => { setAppMode('vault'); }}
+          >
+            Document Vault
           </button>
         </div>
 
         {appMode === 'analytics' ? (
-          <AnalyticsDashboard />
+          <>
+            <button
+              className="btn btn-outline"
+              onClick={() => setAppMode('summarize')}
+              style={{ marginBottom: '1rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+            >
+              ← Back to file
+            </button>
+            <AnalyticsDashboard onSelectCase={onSelectCaseFromHistory} />
+          </>
         ) : appMode === 'compare' ? (
           <CompareMode selectedLanguage={selectedLanguage} initialHistoricalComparison={historicalComparisonData} />
+        ) : appMode === 'batch' ? (
+          <BatchUpload
+            initialFiles={batchFiles}
+            onFilesChange={setBatchFiles}
+            onSelectFile={(fileData) => {
+              setOriginalText(fileData.text);
+              setFilename(fileData.filename);
+              setSummaryResult(fileData.summary);
+              setKeywords(fileData.keywords);
+              setCaseType(fileData.case_type);
+              setCurrentCaseId(fileData.case_id);
+              setCameFromBatch(true);
+              setAppMode('summarize');
+            }}
+          />
+        ) : appMode === 'vault' ? (
+          <DocumentVault onSelectCase={(item) => {
+            onSelectCaseFromHistory(item);
+            setAppMode('summarize');
+          }} />
         ) : (
           <>
+
+
             {/* Upload & Analytics Section */}
-            <section className="no-print" style={{ 
-              marginBottom: '1rem', 
-              display: 'flex', 
-              flexDirection: 'column', 
+            <section className="no-print" style={{
+              marginBottom: '1rem',
+              display: 'flex',
+              flexDirection: 'column',
               gap: '1rem'
             }}>
-              <FileUpload onUpload={handleFileUpload} />
-              
+              <FileUpload onUpload={handleFileUpload} currentFilename={filename} />
+
               <div>
-                <div 
+                <div
                   className="dropzone analytics"
-                  onClick={() => { resetState(); setAppMode('analytics'); setHistoricalComparisonData(null); }}
+                  onClick={() => { setAppMode('analytics'); setHistoricalComparisonData(null); }}
                   style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '110px' }}
                 >
                   <FiPieChart className="dropzone-icon" />
@@ -338,7 +418,7 @@ function App() {
             {/* Error Handling */}
             {errorMsg && (
               <div style={{
-                background: '#451a1a', 
+                background: '#451a1a',
                 border: '1px solid var(--danger)',
                 padding: '1rem',
                 borderRadius: '8px',
@@ -354,13 +434,13 @@ function App() {
             {originalText && (
               <div>
                 <h3 className="no-print" style={{ textAlign: 'center', marginBottom: '1rem' }}>How detailed should the summary be?</h3>
-                <SummaryOptions 
-                  selectedLength={selectedLength} 
-                  onSelect={onLengthChange} 
+                <SummaryOptions
+                  selectedLength={selectedLength}
+                  onSelect={onLengthChange}
                   selectedLanguage={selectedLanguage}
                   onLanguageChange={onLanguageChange}
                 />
-                
+
                 <ResultsPanel
                   originalText={originalText}
                   summaryResult={summaryResult}
@@ -370,13 +450,26 @@ function App() {
                   legalAnalysis={legalAnalysis}
                   activeTab={activeTab}
                   setActiveTab={setActiveTab}
+                  caseId={currentCaseId}
+                  tags={currentTags}
+                  onTagsUpdate={setCurrentTags}
+                />
+
+                {/* Brief Generator */}
+                <BriefGenerator
+                  originalText={originalText}
+                  summaryResult={summaryResult}
+                  keywords={keywords}
+                  caseType={caseType}
+                  legalAnalysis={legalAnalysis}
+                  filename={filename}
                 />
 
                 {(summaryResult || originalText) && (
                   <div className="no-print">
-                    <DownloadBar 
-                      onDownload={handleDownload} 
-                      isDownloading={isDownloading} 
+                    <DownloadBar
+                      onDownload={handleDownload}
+                      isDownloading={isDownloading}
                       disabled={!!loadingMsg}
                       activeTab={activeTab}
                     />

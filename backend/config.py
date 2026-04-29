@@ -7,7 +7,7 @@ For production, set environment variables or use a .env file.
 
 import secrets
 import os
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 
@@ -37,6 +37,12 @@ class Settings(BaseSettings):
 
     # Logging
     log_level: str = "INFO"
+
+    # LLM Configuration
+    llm_provider: str = "openai"
+    openai_api_key: Optional[str] = None
+    anthropic_api_key: Optional[str] = None
+    google_api_key: Optional[str] = None
 
     @field_validator('jwt_secret_key')
     @classmethod
@@ -69,6 +75,7 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
+        extra = "ignore"
 
 
 # Create settings instance

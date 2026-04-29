@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8000/api';
+const API_URL = 'http://127.0.0.1:8000/api';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -14,7 +14,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-const AUTH_URL = 'http://localhost:8000/auth';
+const AUTH_URL = 'http://127.0.0.1:8000/auth';
 
 export const signUp = async (userData) => {
   const response = await axios.post(`${AUTH_URL}/signup`, userData);
@@ -148,14 +148,22 @@ export const downloadComparisonReport = async (comparisonData, template = null) 
   window.URL.revokeObjectURL(url);
 };
 
-export const saveCase = async (filename, originalText, summaryText, keywords, stats) => {
+export const saveCase = async (filename, originalText, summaryText, keywords, stats, tags = [], status = 'new', caseType = null) => {
   const response = await api.post('/save_case', {
     filename,
     original_text: originalText,
     summary_text: summaryText,
     keywords,
-    stats
+    stats,
+    tags,
+    status,
+    case_type: caseType
   });
+  return response.data;
+};
+
+export const updateCaseTags = async (caseId, tags) => {
+  const response = await api.put(`/case/${caseId}/tags`, { tags });
   return response.data;
 };
 
@@ -164,8 +172,8 @@ export const fetchHistory = async () => {
   return response.data;
 };
 
-export const searchCases = async (query) => {
-  const response = await api.post('/search', { query, top_k: 5 });
+export const searchCases = async (query, topK = 50) => {
+  const response = await api.post('/search', { query, top_k: topK });
   return response.data;
 };
 
@@ -209,3 +217,7 @@ export const fetchAnalytics = async () => {
   return response.data;
 };
 
+export const getChatbotStatus = async () => {
+  const response = await api.get('/chatbot/status');
+  return response.data;
+};

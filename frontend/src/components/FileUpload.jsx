@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { FiUploadCloud, FiFileText } from 'react-icons/fi';
 
-const FileUpload = ({ onUpload }) => {
+const FileUpload = ({ onUpload, currentFilename }) => {
   const [error, setError] = useState('');
 
   const onDrop = useCallback((acceptedFiles, fileRejections) => {
@@ -37,6 +37,10 @@ const FileUpload = ({ onUpload }) => {
     multiple: false
   });
 
+  const hasFile = acceptedFiles.length > 0 || currentFilename;
+  const displayName = acceptedFiles.length > 0 ? acceptedFiles[0].name : currentFilename;
+  const displaySize = acceptedFiles.length > 0 ? `${(acceptedFiles[0].size / (1024 * 1024)).toFixed(2)} MB` : '';
+
   return (
     <div>
       <div 
@@ -45,11 +49,12 @@ const FileUpload = ({ onUpload }) => {
       >
         <input {...getInputProps()} />
         
-        {acceptedFiles.length > 0 ? (
+        {hasFile ? (
           <div>
             <FiFileText className="dropzone-icon" />
-            <h3 style={{ color: 'var(--success)' }}>{acceptedFiles[0].name}</h3>
-            <p>{(acceptedFiles[0].size / (1024 * 1024)).toFixed(2)} MB</p>
+            <h3 style={{ color: 'var(--success)' }}>{displayName}</h3>
+            {displaySize && <p>{displaySize}</p>}
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>Drop or click to replace</p>
           </div>
         ) : (
           <div>

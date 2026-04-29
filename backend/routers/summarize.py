@@ -3,6 +3,7 @@ Summarize Router — API endpoints for PDF upload, summarization,
 keyword extraction, and summary download.
 """
 
+import asyncio
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -16,8 +17,10 @@ from services.download_service import (
 )
 from services.vector_service import vector_service
 from services.difference_engine import compare_documents_semantic, get_comparison_summary
+from services.brief_service import generate_brief_docx
+from services.llm_service import get_llm_status
 
-from database import get_db
+from database import get_db, SessionLocal
 from models import CaseDocument, CaseComparison
 from sqlalchemy.orm import Session
 from fastapi import Depends
@@ -102,6 +105,21 @@ class SaveCaseRequest(BaseModel):
     summary_text: str
     keywords: list
     stats: dict
+    tags: Optional[list] = []
+    status: Optional[str] = "new"
+    case_type: Optional[dict] = None
+
+
+class BriefRequest(BaseModel):
+    """Request body for generating a structured legal brief."""
+    filename: str
+    original_text: str
+    summary: str
+    keywords: list
+    legal_analysis: Optional[dict] = None
+    case_type: Optional[dict] = None
+    brief_type: Optional[str] = "memo"
+    template: Optional[str] = "general"
 
 
 class SaveComparisonRequest(BaseModel):
@@ -187,12 +205,103 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
 
     # Extract text based on file type
     if file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
-        result = extract_text_from_image(file_bytes)
+        result = await asyncio.to_thread(extract_text_from_image, file_bytes)
     else:
-        result = extract_text_from_pdf(file_bytes)
-    
+        result = await asyncio.to_thread(extract_text_from_pdf, file_bytes)
+
     result["filename"] = file.filename
     return result
+
+
+@router.post("/batch_process")
+@limiter.limit("5/minute")
+async def batch_process_file(request: Request, file: UploadFile = File(...)):
+    """
+    Extract text, summarize, extract keywords, classify, and save — all in one call.
+    Processes a single PDF file and returns extracted text + summary + keywords + classification.
+    """
+    file_bytes = await file.read()
+    validate_pdf(file_bytes, file.content_type, file.filename)
+
+    # 1. Extract text
+    if file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+        extract_result = await asyncio.to_thread(extract_text_from_image, file_bytes)
+    else:
+        extract_result = await asyncio.to_thread(extract_text_from_pdf, file_bytes)
+
+    text = extract_result.get("text", "")
+    if len(text.strip()) < 50:
+        return {"filename": file.filename, "error": "Too little text extracted"}
+
+    # 2. Run summarize + keywords + classify in parallel threads
+    summary_task = asyncio.to_thread(summarize_text, text, "medium", "en")
+    keywords_task = asyncio.to_thread(extract_keywords, text, 10)
+    classify_task = asyncio.to_thread(classify_case_type, text)
+    summary_res, keywords_res, classify_res = await asyncio.gather(
+        summary_task, keywords_task, classify_task
+    )
+
+    # 3. Save to database
+    stats = compute_text_stats(text)
+    new_case = CaseDocument(
+        filename=file.filename,
+        original_text=text,
+        summary_text=summary_res.get("summary", ""),
+        keywords=keywords_res,
+        stats=stats,
+        tags=[],
+        status="new",
+        case_type=classify_res,
+    )
+    db = SessionLocal()
+    try:
+        db.add(new_case)
+        db.commit()
+        db.refresh(new_case)
+        case_id = new_case.id
+        # Add to FAISS index
+        vector_service.add_document(case_id, text)
+    finally:
+        db.close()
+
+    return {
+        "filename": file.filename,
+        "text": text,
+        "word_count": len(text.split()),
+        "summary": summary_res,
+        "keywords": keywords_res,
+        "case_type": classify_res,
+        "case_id": case_id,
+        "success": True
+    }
+
+
+@router.post("/batch_upload")
+@limiter.limit("5/minute")
+async def batch_upload(request: Request, files: List[UploadFile] = File(...)):
+    """
+    Upload multiple PDF files at once and extract text from all of them.
+    Returns a list of results, one per file.
+    """
+    results = []
+    errors = []
+
+    for file in files:
+        try:
+            file_bytes = await file.read()
+            validate_pdf(file_bytes, file.content_type, file.filename)
+
+            if file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                result = await asyncio.to_thread(extract_text_from_image, file_bytes)
+            else:
+                result = await asyncio.to_thread(extract_text_from_pdf, file_bytes)
+
+            result["filename"] = file.filename
+            results.append({"filename": file.filename, "success": True, **result})
+        except Exception as e:
+            errors.append({"filename": file.filename, "success": False, "error": str(e)})
+
+    return {"results": results, "errors": errors, "total": len(files)}
 
 
 
@@ -216,7 +325,7 @@ async def summarize(request: Request, body_request: SummarizeRequest):
             detail="Text is too short to summarize. Please provide at least 50 characters."
         )
 
-    result = summarize_text(body_request.text, body_request.length, body_request.language)
+    result = await asyncio.to_thread(summarize_text, body_request.text, body_request.length, body_request.language)
     stats = compute_text_stats(body_request.text)
     result["original_stats"] = stats
     return result
@@ -241,8 +350,8 @@ async def keywords(request: Request, body_request: KeywordsRequest):
             detail="Text is too short for keyword extraction."
         )
 
-    result = extract_keywords(body_request.text, body_request.top_n)
-    citations = extract_citations(body_request.text)
+    result = await asyncio.to_thread(extract_keywords, body_request.text, body_request.top_n)
+    citations = await asyncio.to_thread(extract_citations, body_request.text)
     return {"keywords": result, "citations": citations}
 
 
@@ -264,7 +373,7 @@ async def classify_case(request: Request, body_request: ClassifyRequest):
             detail="Text is too short for classification."
         )
 
-    result = classify_case_type(body_request.text)
+    result = await asyncio.to_thread(classify_case_type, body_request.text)
     return result
 
 
@@ -288,7 +397,7 @@ async def analyze_document(request: Request, body_request: AnalyzeRequest):
             detail="Text is too short for analysis. Please provide at least 100 characters."
         )
 
-    result = analyze_legal_document(body_request.text)
+    result = await asyncio.to_thread(analyze_legal_document, body_request.text)
     return result
 
 
@@ -466,7 +575,10 @@ async def save_case(request: SaveCaseRequest, db: Session = Depends(get_db)):
         original_text=request.original_text,
         summary_text=request.summary_text,
         keywords=request.keywords,
-        stats=request.stats
+        stats=request.stats,
+        tags=request.tags or [],
+        status=request.status or "new",
+        case_type=request.case_type,
     )
     db.add(new_case)
     db.commit()
@@ -481,45 +593,89 @@ async def save_case(request: SaveCaseRequest, db: Session = Depends(get_db)):
 @router.get("/history")
 async def get_history(db: Session = Depends(get_db)):
     """
-    Retrieve all saved cases, ordered by newest first.
-    Returns metadata only to save bandwidth.
+    Retrieve all saved cases, deduplicated by filename, ordered by newest first.
     """
     cases = db.query(
-        CaseDocument.id, 
-        CaseDocument.filename, 
+        CaseDocument.id,
+        CaseDocument.filename,
         CaseDocument.created_at,
-        CaseDocument.stats
+        CaseDocument.stats,
+        CaseDocument.tags,
+        CaseDocument.status,
+        CaseDocument.case_type,
     ).order_by(CaseDocument.created_at.desc()).all()
+
+    # Deduplicate by filename (keeping the most recent)
+    seen_filenames = set()
+    unique_cases = []
     
-    return [
-        {
-            "id": c.id,
-            "filename": c.filename,
-            "created_at": c.created_at,
-            "stats": c.stats
-        } 
-        for c in cases
-    ]
+    import json
+    for c in cases:
+        if c.filename not in seen_filenames:
+            seen_filenames.add(c.filename)
+            
+            # Safety parse stats/tags if they are strings
+            stats_val = c.stats
+            if isinstance(stats_val, str):
+                try: stats_val = json.loads(stats_val)
+                except: stats_val = {}
+                
+            tags_val = c.tags
+            if isinstance(tags_val, str):
+                try: tags_val = json.loads(tags_val)
+                except: tags_val = []
+                
+            case_type_val = c.case_type
+            if isinstance(case_type_val, str):
+                try: case_type_val = json.loads(case_type_val)
+                except: case_type_val = {}
+
+            unique_cases.append({
+                "id": c.id,
+                "filename": c.filename,
+                "created_at": c.created_at,
+                "stats": stats_val,
+                "tags": tags_val or [],
+                "status": c.status or "new",
+                "case_type": case_type_val,
+            })
+
+    return unique_cases
 
 
 @router.post("/search")
 async def search_cases(request: SearchRequest, db: Session = Depends(get_db)):
     """
-    Semantic search through saved cases using the FAISS vector store.
+    Hybrid search: Semantic search through content (FAISS) + Keyword match on filenames.
+    Results are deduplicated by filename.
     """
-    results = vector_service.find_similar(request.query, top_k=request.top_k)
+    # 1. Filename keyword match (SQL LIKE)
+    filename_matches = db.query(CaseDocument).filter(
+        CaseDocument.filename.ilike(f"%{request.query}%")
+    ).all()
+    filename_ids = {c.id for c in filename_matches}
+
+    # 2. Semantic match (FAISS)
+    semantic_results = vector_service.find_similar(request.query, top_k=request.top_k) or []
+    semantic_ids = [res[0] for res in semantic_results]
+    semantic_scores = {res[0]: res[1] for res in semantic_results}
+
+    # 3. Combine and de-duplicate IDs
+    all_case_ids = list(filename_ids.union(set(semantic_ids)))
     
-    if not results:
+    if not all_case_ids:
         return {"results": []}
-        
-    case_ids = [res[0] for res in results]
-    scores = {res[0]: res[1] for res in results}
+
+    # 4. Fetch all matching cases
+    cases = db.query(CaseDocument).filter(CaseDocument.id.in_(all_case_ids)).all()
     
-    cases = db.query(CaseDocument).filter(CaseDocument.id.in_(case_ids)).all()
-    
-    # Format and sort by score
+    # 5. Format and score
     formatted_results = []
     for case in cases:
+        score = semantic_scores.get(case.id, 0.0)
+        if case.id in filename_ids:
+            score = max(score, 1.5)
+
         formatted_results.append({
             "id": case.id,
             "filename": case.filename,
@@ -528,11 +684,41 @@ async def search_cases(request: SearchRequest, db: Session = Depends(get_db)):
             "keywords": case.keywords,
             "stats": case.stats,
             "created_at": case.created_at,
-            "score": scores.get(case.id, 0)
+            "case_type": case.case_type,
+            "score": score,
+            "tags": case.tags or []
         })
         
+    # 6. Final deduplication by filename for the search results
     formatted_results.sort(key=lambda x: x["score"], reverse=True)
-    return {"results": formatted_results}
+    
+    seen_search_filenames = set()
+    final_results = []
+    for res in formatted_results:
+        if res["filename"] not in seen_search_filenames:
+            seen_search_filenames.add(res["filename"])
+            final_results.append(res)
+
+    return {"results": final_results}
+
+
+class UpdateTagsRequest(BaseModel):
+    tags: List[str]
+
+
+@router.put("/case/{case_id}/tags")
+async def update_case_tags(case_id: int, request: UpdateTagsRequest, db: Session = Depends(get_db)):
+    """
+    Update the tags for an existing case.
+    """
+    case = db.query(CaseDocument).filter(CaseDocument.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    case.tags = request.tags
+    db.commit()
+
+    return {"message": "Tags updated", "tags": case.tags}
 
 
 @router.delete("/delete_case/{case_id}")
@@ -610,6 +796,34 @@ async def get_comparison_detail(comparison_id: int, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail="Comparison not found")
         
     return comparison
+
+
+@router.post("/brief")
+@limiter.limit("10/minute")
+async def generate_brief(request: Request, body_request: BriefRequest):
+    """
+    Generate a structured legal brief (memo, brief, opinion, summary)
+    as a DOCX document with formal sections: Issues, Facts, Analysis, Prayer, Authorities.
+    """
+    try:
+        docx_bytes = generate_brief_docx(
+            filename=body_request.filename,
+            original_text=body_request.original_text,
+            summary=body_request.summary,
+            keywords=body_request.keywords,
+            legal_analysis=body_request.legal_analysis,
+            case_type=body_request.case_type,
+            brief_type=body_request.brief_type or "memo",
+            template=body_request.template or "general",
+        )
+        return Response(
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename=legal_brief_{body_request.brief_type or 'memo'}.docx"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Brief generation failed: {str(e)}")
+
 
 from collections import Counter
 import json
@@ -698,3 +912,11 @@ async def get_analytics(db: Session = Depends(get_db)):
         "case_types": case_types_formatted,
         "trends": trends[-15:]
     }
+
+@router.get("/chatbot/status")
+async def chatbot_status():
+    """
+    Get the status of the chatbot AI services.
+    Indicates if the bot is 'Online' (using an external provider) or 'Offline' (local mode).
+    """
+    return get_llm_status()

@@ -11,6 +11,10 @@ class CaseDocument(Base):
     summary_text = Column(Text)
     keywords = Column(JSON)
     stats = Column(JSON)
+    tags = Column(JSON, default=list)
+    status = Column(String, default="new", index=True)
+    brief_type = Column(String, nullable=True)
+    case_type = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class User(Base):

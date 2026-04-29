@@ -125,6 +125,19 @@ const HistorySidebar = ({ onSelectCase, onSelectComparison, isOpen, toggleSideba
                       </span>
                     )}
                   </div>
+                  {item.tags && item.tags.length > 0 && (
+                    <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+                      {item.tags.map(tag => (
+                        <span key={tag} style={{
+                          fontSize: '0.65rem',
+                          padding: '0.1rem 0.4rem',
+                          background: 'var(--accent-primary)',
+                          color: '#fff',
+                          borderRadius: '8px'
+                        }}>{tag}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))

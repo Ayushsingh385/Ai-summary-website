@@ -1,5 +1,7 @@
-import { FiClock, FiFile, FiTag, FiBriefcase, FiBook } from 'react-icons/fi';
+import { FiClock, FiFile, FiTag, FiBriefcase, FiBook, FiCopy } from 'react-icons/fi';
+import { useState } from 'react';
 import LegalAnalysis from './LegalAnalysis';
+import TagsEditor from './TagsEditor';
 
 // Case type color mapping
 const CASE_TYPE_COLORS = {
@@ -16,7 +18,16 @@ const CASE_TYPE_COLORS = {
   "Misc/Other": { bg: "#6b7280", text: "#fff" },
 };
 
-const ResultsPanel = ({ originalText, summaryResult, keywords, citations, caseType, legalAnalysis, activeTab, setActiveTab }) => {
+const ResultsPanel = ({ originalText, summaryResult, keywords, citations, caseType, legalAnalysis, activeTab, setActiveTab, caseId, tags, onTagsUpdate }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopySummary = () => {
+    if (!summaryResult?.summary) return;
+    navigator.clipboard.writeText(summaryResult.summary).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   return (
     <div className="glass-panel" style={{ marginTop: '2rem', padding: '1rem' }}>
@@ -55,6 +66,10 @@ const ResultsPanel = ({ originalText, summaryResult, keywords, citations, caseTy
         </div>
       )}
 
+      {caseId && (
+        <TagsEditor caseId={caseId} initialTags={tags || []} onTagsUpdate={onTagsUpdate} />
+      )}
+
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '1rem', paddingLeft: '1rem' }}>
         <button
@@ -89,10 +104,32 @@ const ResultsPanel = ({ originalText, summaryResult, keywords, citations, caseTy
           <div className="result-header">
             <h3>{activeTab === 'summary' ? 'The Summary' : 'Full Text'}</h3>
             {activeTab === 'summary' && summaryResult && (
-              <span className="stats">
-                <FiFile style={{ display: 'inline', marginRight: '4px' }} />
-                {summaryResult.summary_word_count} words
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <span className="stats">
+                  <FiFile style={{ display: 'inline', marginRight: '4px' }} />
+                  {summaryResult.summary_word_count} words
+                </span>
+                <button
+                  onClick={handleCopySummary}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    padding: '0.3rem 0.6rem',
+                    fontSize: '0.8rem',
+                    background: copied ? '#16a34a' : 'var(--bg-card)',
+                    color: copied ? '#fff' : 'var(--text-muted)',
+                    border: '1px solid var(--panel-border)',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  title="Copy summary to clipboard"
+                >
+                  <FiCopy size={13} />
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
             )}
           </div>
           

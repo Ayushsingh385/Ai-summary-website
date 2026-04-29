@@ -22,3 +22,7 @@ Thumbs.db
 
 # Databases
 *.db
+
+# Scratch
+scratch/
+backend/scratch/

@@ -21,11 +21,12 @@ async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
     if not request.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
         
-    response_text = process_chat_query(
+    result = process_chat_query(
         request.query, 
         request.document_text, 
         request.document_keywords,
         db
     )
     
-    return {"response": response_text}
+    # result is now {"response": str, "provider": str}
+    return result

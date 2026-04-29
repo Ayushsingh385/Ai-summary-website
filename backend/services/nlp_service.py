@@ -76,7 +76,7 @@ def _get_bart_pipeline():
                         min_length=kwargs.get("min_length", 30),
                         do_sample=kwargs.get("do_sample", False),
                         early_stopping=True,
-                        num_beams=4
+                        num_beams=2
                     )
                     return [{"summary_text": self.tokenizer.decode(summary_ids[0], skip_special_tokens=True)}]
             
@@ -281,6 +281,7 @@ def _bart_summarize(pipe, text: str, length: str, context_prefix: str = "") -> d
                 min_length=effective_min,
                 do_sample=False,
                 truncation=True,
+                num_beams=2,
             )
             partial_summaries.append(out[0]["summary_text"])
         except Exception as exc:
@@ -299,6 +300,7 @@ def _bart_summarize(pipe, text: str, length: str, context_prefix: str = "") -> d
                 min_length=min_len,
                 do_sample=False,
                 truncation=True,
+                num_beams=2,
             )
             combined_summary = second_pass[0]["summary_text"]
         except Exception:

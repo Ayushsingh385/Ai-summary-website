@@ -154,10 +154,24 @@ header p {
 }
 
 .btn-mode.active-compare {
-  background: var(--accent-secondary); 
+  background: var(--accent-secondary);
   border-color: var(--accent-secondary);
   color: white;
   box-shadow: 0 0 15px rgba(129, 140, 248, 0.4);
+}
+
+.btn-mode.active-batch {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: white;
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+}
+
+.btn-mode.active-workflow {
+  background: #22c55e;
+  border-color: #22c55e;
+  color: white;
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
 }
 
 /* Premium Animations (Shimmer/Pulse) */
@@ -492,4 +506,45 @@ body[data-theme='light'] {
     background: white !important;
     color: black !important;
   }
+}
+
+/* ChatBot Animations & Content Styles */
+@keyframes typing {
+  0% { transform: translateY(0px); opacity: 0.3; }
+  50% { transform: translateY(-3px); opacity: 1; }
+  100% { transform: translateY(0px); opacity: 0.3; }
+}
+
+.markdown-content p {
+  margin-bottom: 0.75rem;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content ul, .markdown-content ol {
+  margin-left: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.markdown-content li {
+  margin-bottom: 0.4rem;
+}
+
+.markdown-content strong {
+  font-weight: 700;
+  color: inherit;
+}
+
+.markdown-content code {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85em;
+}
+
+.chat-quick-actions::-webkit-scrollbar {
+  display: none;
 }
