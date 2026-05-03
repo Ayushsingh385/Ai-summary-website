@@ -15,6 +15,7 @@ const BatchUpload = ({ onBatchComplete, onSelectFile, initialFiles = [], onFiles
     });
   }, [onFilesChange]);
   const [isUploading, setIsUploading] = useState(false);
+  const [lazyMode, setLazyMode] = useState(false); // If true, return text immediately, process in background
   const inputRef = useRef();
 
   const handleFileSelect = useCallback((e) => {
@@ -64,32 +65,157 @@ const BatchUpload = ({ onBatchComplete, onSelectFile, initialFiles = [], onFiles
 
     setIsUploading(true);
 
-    // Process files one by one through /api/batch_process (text + summary + keywords + save)
-    for (const fileObj of pending) {
-      setIsUploading(true);
-
-      try {
-        updateFiles(prev => prev.map(f => f.id === fileObj.id ? { ...f, status: 'processing' } : f));
-
+    if (lazyMode) {
+      // LAZY MODE: Upload text immediately, process in background
+      for (const fileObj of pending) {
         const token = localStorage.getItem('token');
         const formData = new FormData();
         formData.append('file', fileObj.file);
 
-        const response = await fetch('http://localhost:8000/api/batch_process', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
+        try {
+          updateFiles(prev => prev.map(f => f.id === fileObj.id ? { ...f, status: 'processing' } : f));
+
+          // Use upload_lazy to get immediate text extraction
+          const response = await fetch('http://localhost:8000/api/upload_lazy', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `HTTP ${response.status}`);
+          }
+
+          const result = await response.json();
+
+          if (result.success || result.text) {
+            // Text extracted successfully, save to DB in background
+            // Update UI with extracted text available, summary pending
+            updateFiles(prev => prev.map(f =>
+              f.id === fileObj.id
+                ? {
+                    ...f,
+                    status: 'pending_summary',
+                    result: {
+                      ...result,
+                      summary: null, // Will be populated in background
+                      keywords: null,
+                      case_type: null,
+                    }
+                }
+                : f
+            ));
+          } else {
+            // Fall back to full processing if lazy endpoint fails
+            throw new Error(result.error || 'Lazy upload failed');
+          }
+        } catch (err) {
+          updateFiles(prev => prev.map(f => f.id === fileObj.id ? { ...f, status: 'error', error: err.message } : f));
+        }
+      }
+
+      // After all uploads, start background processing for summaries
+      setTimeout(async () => {
+        const pendingSummaries = files.filter(f => f.status === 'pending_summary');
+        if (pendingSummaries.length > 0) {
+          // Process pending summaries
+          for (const fileObj of pendingSummaries) {
+            const token = localStorage.getItem('token');
+            const formData = new FormData();
+            formData.append('file', fileObj.file);
+
+            try {
+              const response = await fetch(`http://localhost:8000/api/process_lazy/${fileObj.result.job_id}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData,
+              });
+
+              if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.error || `HTTP ${response.status}`);
+              }
+
+              const result = await response.json();
+              updateFiles(prev => prev.map(f => f.id === fileObj.id ? { ...f, status: 'done', result } : f));
+            } catch (err) {
+              updateFiles(prev => prev.map(f => f.id === fileObj.id ? { ...f, status: 'error', error: err.message } : f));
+            }
+          }
+        }
+        setIsUploading(false);
+      }, 500); // Small delay to let initial uploads complete
+
+    } else {
+      // PARALLEL MODE: Full processing in batches of 3-5
+      const BATCH_SIZE = 4;
+      const batchResults = [];
+      const batchErrors = [];
+
+      for (let i = 0; i < pending.length; i += BATCH_SIZE) {
+        const batch = pending.slice(i, i + BATCH_SIZE);
+        const token = localStorage.getItem('token');
+
+        // Create FormData for the entire batch
+        const formData = new FormData();
+        batch.forEach((fileObj, idx) => {
+          formData.append('files', fileObj.file);
         });
 
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error || `HTTP ${response.status}`);
-        }
+        try {
+          // Update all files in this batch to processing
+          updateFiles(prev => prev.map(f =>
+            batch.some(b => b.id === f.id) ? { ...f, status: 'processing' } : f
+          ));
 
-        const result = await response.json();
-        updateFiles(prev => prev.map(f => f.id === fileObj.id ? { ...f, status: 'done', result } : f));
-      } catch (err) {
-        updateFiles(prev => prev.map(f => f.id === fileObj.id ? { ...f, status: 'error', error: err.message } : f));
+          // Process batch in parallel
+          const response = await fetch('http://localhost:8000/api/batch_process_all', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `HTTP ${response.status}`);
+          }
+
+          const result = await response.json();
+          batchResults.push(...result.results);
+          batchErrors.push(...result.errors);
+
+          // Update UI with results for this batch
+          updateFiles(prev => {
+            let updated = prev.map(f => {
+              const result = result.results?.find(r => r.filename === f.file.name);
+              if (result) {
+                if (result.success) {
+                  return { ...f, status: 'done', result };
+                } else if (result.error) {
+                  return { ...f, status: 'error', error: result.error };
+                }
+              }
+              return f;
+            });
+
+            // Handle any files not found (error cases from errors array)
+            result.errors?.forEach(err => {
+              updated = updated.map(f =>
+                f.file.name === err.filename && f.status === 'processing'
+                  ? { ...f, status: 'error', error: err.error }
+                  : f
+              );
+            });
+
+            return updated;
+          });
+        } catch (err) {
+          // Mark all files in this batch as failed
+          updateFiles(prev => prev.map(f =>
+            batch.some(b => b.id === f.id) ? { ...f, status: 'error', error: err.message } : f
+          ));
+        }
       }
     }
 
@@ -144,10 +270,11 @@ const BatchUpload = ({ onBatchComplete, onSelectFile, initialFiles = [], onFiles
   };
 
   const pendingCount = files.filter(f => f.status === 'pending').length;
+  const pendingSummaryCount = files.filter(f => f.status === 'pending_summary').length;
   const doneCount = files.filter(f => f.status === 'done').length;
   const processingCount = files.filter(f => f.status === 'processing').length;
   const errorCount = files.filter(f => f.status === 'error').length;
-  const totalProcessed = doneCount + errorCount;
+  const totalProcessed = doneCount + errorCount + pendingSummaryCount;
 
   const clearCompleted = () => {
     updateFiles(prev => prev.filter(f => f.status !== 'done' && f.status !== 'error'));
@@ -178,8 +305,31 @@ const BatchUpload = ({ onBatchComplete, onSelectFile, initialFiles = [], onFiles
           Drop multiple PDF files here
         </p>
         <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-          or click to browse — files are processed one at a time
+          or click to browse — {lazyMode ? 'text returns immediately, summary in background' : 'files processed in parallel (3-5 at a time)'}
         </p>
+
+        {/* Lazy Mode Toggle */}
+        <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
+          <input
+            type="checkbox"
+            id="lazyMode"
+            checked={lazyMode}
+            onChange={(e) => setLazyMode(e.target.checked)}
+            style={{
+              width: '14px',
+              height: '14px',
+              accentColor: 'var(--accent-primary)',
+              cursor: 'pointer',
+            }}
+          />
+          <label
+            htmlFor="lazyMode"
+            style={{ cursor: 'pointer', fontSize: '0.75rem', color: 'var(--text-muted)' }}
+          >
+            Lazy upload (return text immediately)
+          </label>
+        </div>
+
         <input
           ref={inputRef}
           type="file"
@@ -204,6 +354,9 @@ const BatchUpload = ({ onBatchComplete, onSelectFile, initialFiles = [], onFiles
             <span style={{ color: '#22c55e' }}>{doneCount} done</span>
             {processingCount > 0 && (
               <span style={{ color: '#f59e0b' }}>{processingCount} processing</span>
+            )}
+            {pendingSummaryCount > 0 && (
+              <span style={{ color: '#3b82f6' }}>{pendingSummaryCount} waiting for summary</span>
             )}
             <span style={{ color: '#ef4444' }}>{errorCount} failed</span>
             {pendingCount > 0 && <span>{pendingCount} pending</span>}
@@ -252,13 +405,13 @@ const BatchUpload = ({ onBatchComplete, onSelectFile, initialFiles = [], onFiles
           }}>
             <div style={{
               height: '100%',
-              width: `${(totalProcessed / (totalProcessed + pendingCount)) * 100}%`,
+              width: `${(totalProcessed + pendingSummaryCount) / (totalProcessed + pendingSummaryCount + pendingCount) * 100}%`,
               background: 'var(--accent-primary)',
               transition: 'width 0.3s ease',
             }} />
           </div>
           <p style={{ margin: '0.3rem 0 0', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-            Processing {totalProcessed} of {totalProcessed + pendingCount} files...
+            Processing {totalProcessed + pendingSummaryCount} of {totalProcessed + pendingSummaryCount + pendingCount} files...
           </p>
         </div>
       )}
@@ -326,9 +479,47 @@ const BatchUpload = ({ onBatchComplete, onSelectFile, initialFiles = [], onFiles
                 )}
 
                 {fileObj.status === 'processing' && (
-                  <p style={{ margin: 0, fontSize: '0.72rem', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <FiLoader size={12} style={{ animation: 'spin 1s linear infinite' }} /> Extracting + summarizing...
-                  </p>
+                  <div style={{ width: '100%' }}>
+                    <p style={{ margin: '0 0 0.25rem', fontSize: '0.72rem', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <FiLoader size={12} style={{ animation: 'spin 1s linear infinite' }} /> Extracting text...
+                    </p>
+                    <div style={{
+                      height: '3px',
+                      background: 'var(--panel-border)',
+                      borderRadius: '4px',
+                      overflow: 'hidden',
+                      position: 'relative',
+                    }}>
+                      <div style={{
+                        height: '100%',
+                        width: '100%',
+                        background: 'linear-gradient(90deg, #f59e0b, #fbbf24)',
+                        animation: 'progress-stripes 1s linear infinite',
+                      }} />
+                    </div>
+                  </div>
+                )}
+
+                {fileObj.status === 'pending_summary' && (
+                  <div style={{ width: '100%' }}>
+                    <p style={{ margin: '0 0 0.25rem', fontSize: '0.72rem', color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <FiFile size={12} /> Text ready! Summary processing...
+                    </p>
+                    <div style={{
+                      height: '3px',
+                      background: 'var(--panel-border)',
+                      borderRadius: '4px',
+                      overflow: 'hidden',
+                      position: 'relative',
+                    }}>
+                      <div style={{
+                        height: '100%',
+                        width: '100%',
+                        background: 'linear-gradient(90deg, #3b82f6, #60a5fa)',
+                        animation: 'progress-stripes 1s linear infinite',
+                      }} />
+                    </div>
+                  </div>
                 )}
 
                 {fileObj.status === 'done' && fileObj.result && (

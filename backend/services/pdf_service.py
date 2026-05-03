@@ -11,6 +11,7 @@ from PIL import Image
 from pdf2image import convert_from_bytes
 import logging
 import os
+import asyncio
 
 # Check for Tesseract path on Windows
 if os.name == 'nt':
@@ -73,7 +74,7 @@ def validate_pdf(file_bytes: bytes, content_type: str, filename: str) -> None:
 
 
 
-def extract_text_from_pdf(file_bytes: bytes) -> dict:
+async def extract_text_from_pdf(file_bytes: bytes) -> dict:
     """
     Extract text from a PDF file using pypdfium2 (high performance).
     Returns a dict with extracted text, page count, and per-page text.
@@ -107,32 +108,47 @@ def extract_text_from_pdf(file_bytes: bytes) -> dict:
         full_text = "\n\n".join(full_text_list).strip()
 
         if not full_text or len(full_text) < 10:
-            logger.info("PDF text extraction failed or text is too short. Attempting OCR fallback...")
+            logger.info("PDF text extraction failed or text is too short. Attempting parallel OCR fallback...")
             try:
-                # Convert PDF to list of images
-                images = convert_from_bytes(file_bytes)
-                pages_text = []
-                full_text_list = []
+                # Load document with pdfium for faster rendering than Poppler
+                pdf = pdfium.PdfDocument(file_bytes)
+                page_count = len(pdf)
                 
-                for i, img in enumerate(images):
-                    text = pytesseract.image_to_string(img)
+                async def ocr_page(page_idx):
+                    # Render page to PIL image
+                    page = pdf.get_page(page_idx)
+                    # 300 DPI is standard for OCR
+                    bitmap = page.render(scale=300/72) 
+                    pil_image = bitmap.to_pil()
+                    
+                    # Use asyncio.to_thread for blocking Tesseract calls
+                    text = await asyncio.to_thread(pytesseract.image_to_string, pil_image)
                     clean_text = text.strip()
-                    pages_text.append({
-                        "page_number": i + 1,
+                    
+                    page.close()
+                    return {
+                        "page_number": page_idx + 1,
                         "text": clean_text,
                         "char_count": len(clean_text)
-                    })
-                    full_text_list.append(clean_text)
+                    }
+
+                # Run OCR on all pages in parallel
+                ocr_results = await asyncio.gather(*[ocr_page(i) for i in range(page_count)])
+                pdf.close()
                 
+                # Sort by page number to maintain order
+                ocr_results.sort(key=lambda x: x["page_number"])
+                
+                pages_text = ocr_results
+                full_text_list = [res["text"] for res in ocr_results]
                 full_text = "\n\n".join(full_text_list).strip()
                 page_count = len(images)
                 
             except Exception as ocr_err:
-                logger.error(f"OCR fallback failed: {ocr_err}")
+                logger.error(f"Parallel OCR fallback failed: {ocr_err}")
                 raise HTTPException(
                     status_code=422,
-                    detail="Could not extract meaningful text from the PDF. "
-                           "The file may be scanned/image-based or empty, and OCR failed."
+                    detail="Could not extract meaningful text from the PDF using Parallel OCR."
                 )
 
         if not full_text or len(full_text) < 10:

@@ -160,7 +160,7 @@ const ResultsPanel = ({ originalText, summaryResult, keywords, citations, caseTy
                     <FiFile /> Original length: {summaryResult.original_word_count} words
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <FiClock /> Shortened by: {summaryResult.compression_ratio}%
+                    <FiClock /> Words removed: {summaryResult.original_word_count - summaryResult.summary_word_count} words
                   </div>
                 </div>
               </div>

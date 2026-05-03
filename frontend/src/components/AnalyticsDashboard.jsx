@@ -88,11 +88,11 @@ const AnalyticsDashboard = ({ onSelectCase }) => {
           <div className="stat-value">{total_cases}</div>
         </div>
         <div className="stat-card glass-panel">
-          <h3>Average shortening</h3>
+          <h3>Average words saved</h3>
           <div className="stat-value">
-            {trends.length > 0 ? Math.round(trends.reduce((acc, curr) => acc + curr.compression_ratio, 0) / trends.length) : 0}%
+            {trends.length > 0 ? Math.round(trends.reduce((acc, curr) => acc + (curr.original_words - curr.summary_words), 0) / trends.length).toLocaleString() : 0}
           </div>
-          <p className="stat-sub">Average compression ratio across recent files</p>
+          <p className="stat-sub">Average word reduction across recent files</p>
         </div>
         <div className="stat-card glass-panel">
           <h3>Most common category</h3>
@@ -168,7 +168,7 @@ const AnalyticsDashboard = ({ onSelectCase }) => {
                 </div>
               </div>
               <div className="trend-efficiency">
-                <span className="efficiency-badge">-{trend.compression_ratio}%</span>
+                <span className="efficiency-badge">-{trend.original_words - trend.summary_words} words</span>
               </div>
             </div>
           )) : <p>No trends available. Summarize some cases first.</p>}

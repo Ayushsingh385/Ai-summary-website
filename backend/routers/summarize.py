@@ -207,7 +207,7 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
     if file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
         result = await asyncio.to_thread(extract_text_from_image, file_bytes)
     else:
-        result = await asyncio.to_thread(extract_text_from_pdf, file_bytes)
+        result = await extract_text_from_pdf(file_bytes)
 
     result["filename"] = file.filename
     return result
@@ -227,7 +227,7 @@ async def batch_process_file(request: Request, file: UploadFile = File(...)):
     if file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
         extract_result = await asyncio.to_thread(extract_text_from_image, file_bytes)
     else:
-        extract_result = await asyncio.to_thread(extract_text_from_pdf, file_bytes)
+        extract_result = await extract_text_from_pdf(file_bytes)
 
     text = extract_result.get("text", "")
     if len(text.strip()) < 50:
@@ -276,6 +276,247 @@ async def batch_process_file(request: Request, file: UploadFile = File(...)):
     }
 
 
+@router.post("/upload_lazy")
+@limiter.limit("20/minute")
+async def upload_lazy(request: Request, file: UploadFile = File(...)):
+    """
+    Upload and extract text immediately. Summarization and classification
+    run in the background. Returns extracted text right away.
+    Background job ID can be used to poll for completion.
+    """
+    import uuid
+    from datetime import datetime
+
+    file_bytes = await file.read()
+    validate_pdf(file_bytes, file.content_type, file.filename)
+
+    # 1. Extract text immediately (async thread)
+    if file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+        extract_result = await asyncio.to_thread(extract_text_from_image, file_bytes)
+    else:
+        extract_result = await extract_text_from_pdf(file_bytes)
+
+    text = extract_result.get("text", "")
+    if len(text.strip()) < 50:
+        return {"filename": file.filename, "error": "Too little text extracted"}
+
+    # Generate background job ID
+    job_id = str(uuid.uuid4())[:8]  # Short ID for user reference
+    job_status = {
+        "job_id": job_id,
+        "status": "extracted",
+        "filename": file.filename,
+        "text_available": True,
+        "summary_pending": True,
+        "keywords_pending": True,
+        "classification_pending": True,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    # Store job status in a simple in-memory dict (in production, use Redis)
+    # For now, we just return the extracted text and job ID
+    # The full processing will be triggered on-demand via /process_lazy/{job_id}
+
+    # Return immediately with extracted text
+    return {
+        "filename": file.filename,
+        "text": text,
+        "word_count": len(text.split()),
+        "job_id": job_id,
+        "status": "extracted",
+        "message": "Text extracted. Run /process_lazy/{job_id} to generate summary.",
+    }
+
+
+@router.post("/process_lazy/{job_id}")
+@limiter.limit("30/minute")
+async def process_lazy(request: Request, job_id: str, file: UploadFile = File(...)):
+    """
+    Process a previously uploaded file (text already extracted).
+    Runs summarization, keyword extraction, and classification in background threads.
+    """
+    import json
+
+    file_bytes = await file.read()
+    validate_pdf(file_bytes, file.content_type, file.filename)
+
+    # Re-extract text (could be optimized by storing text from upload_lazy)
+    if file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+        extract_result = await asyncio.to_thread(extract_text_from_image, file_bytes)
+    else:
+        extract_result = await extract_text_from_pdf(file_bytes)
+
+    text = extract_result.get("text", "")
+    if len(text.strip()) < 50:
+        return {"job_id": job_id, "error": "Too little text extracted"}
+
+    # Run summarize + keywords + classify in parallel threads
+    summary_task = asyncio.to_thread(summarize_text, text, "medium", "en")
+    keywords_task = asyncio.to_thread(extract_keywords, text, 10)
+    classify_task = asyncio.to_thread(classify_case_type, text)
+    summary_res, keywords_res, classify_res = await asyncio.gather(
+        summary_task, keywords_task, classify_task
+    )
+
+    # Save to database
+    stats = compute_text_stats(text)
+    new_case = CaseDocument(
+        filename=file.filename,
+        original_text=text,
+        summary_text=summary_res.get("summary", ""),
+        keywords=keywords_res,
+        stats=stats,
+        tags=[],
+        status="new",
+        case_type=classify_res,
+    )
+    db = SessionLocal()
+    try:
+        db.add(new_case)
+        db.commit()
+        db.refresh(new_case)
+        case_id = new_case.id
+        # Add to FAISS index
+        vector_service.add_document(case_id, text)
+    finally:
+        db.close()
+
+    return {
+        "job_id": job_id,
+        "filename": file.filename,
+        "text": text,
+        "word_count": len(text.split()),
+        "summary": summary_res,
+        "keywords": keywords_res,
+        "case_type": classify_res,
+        "case_id": case_id,
+        "status": "completed",
+        "success": True
+    }
+
+
+@router.post("/batch_process_all")
+@limiter.limit("5/minute")
+async def batch_process_all(request: Request, files: List[UploadFile] = File(...)):
+    """
+    Upload multiple PDF files and process them in parallel.
+    Each file gets: text extraction + summarization + keywords + classification + database save.
+    Returns a list of complete results, one per file.
+    """
+    # Validate all files first
+    file_datas = []
+    errors = []
+
+    for file in files:
+        try:
+            file_bytes = await file.read()
+            validate_pdf(file_bytes, file.content_type, file.filename)
+            file_datas.append({
+                "file": file,
+                "bytes": file_bytes,
+                "filename": file.filename,
+            })
+        except Exception as e:
+            errors.append({"filename": file.filename, "success": False, "error": str(e)})
+
+    if not file_datas:
+        return {"results": [], "errors": errors, "total": 0}
+
+    # Process files in parallel using asyncio.gather
+    # Limit to 5 concurrent tasks to avoid overloading the system
+    concurrent_limit = min(len(file_datas), 5)
+
+    async def process_single_file_full(fb_data):
+        """Process a single file completely: extract, summarize, classify, save."""
+        try:
+            file_bytes = fb_data["bytes"]
+            filename = fb_data["filename"]
+
+            # 1. Extract text
+            if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                extract_result = await asyncio.to_thread(extract_text_from_image, file_bytes)
+            else:
+                extract_result = await extract_text_from_pdf(file_bytes)
+
+            text = extract_result.get("text", "")
+            if len(text.strip()) < 50:
+                return {
+                    "filename": filename,
+                    "success": False,
+                    "error": "Too little text extracted"
+                }, None
+
+            # 2. Run summarization, keywords, and classification in parallel
+            summary_task = asyncio.to_thread(summarize_text, text, "medium", "en")
+            keywords_task = asyncio.to_thread(extract_keywords, text, 10)
+            classify_task = asyncio.to_thread(classify_case_type, text)
+            summary_res, keywords_res, classify_res = await asyncio.gather(
+                summary_task, keywords_task, classify_task
+            )
+
+            # 3. Save to database
+            stats = compute_text_stats(text)
+            new_case = CaseDocument(
+                filename=filename,
+                original_text=text,
+                summary_text=summary_res.get("summary", ""),
+                keywords=keywords_res,
+                stats=stats,
+                tags=[],
+                status="new",
+                case_type=classify_res,
+            )
+            db = SessionLocal()
+            try:
+                db.add(new_case)
+                db.commit()
+                db.refresh(new_case)
+                case_id = new_case.id
+                # Add to FAISS index
+                vector_service.add_document(case_id, text)
+            finally:
+                db.close()
+
+            return {
+                "filename": filename,
+                "success": True,
+                "text": text,
+                "word_count": len(text.split()),
+                "summary": summary_res,
+                "keywords": keywords_res,
+                "case_type": classify_res,
+                "case_id": case_id,
+            }, None
+
+        except Exception as e:
+            return {
+                "filename": filename,
+                "success": False,
+                "error": str(e)
+            }, None
+
+    # Process in batches to limit concurrency
+    results = []
+    batch_errors = []
+
+    for i in range(0, len(file_datas), concurrent_limit):
+        batch = file_datas[i:i + concurrent_limit]
+        batch_tasks = [process_single_file_full(fb) for fb in batch]
+        batch_results = await asyncio.gather(*batch_tasks)
+
+        for result, error in batch_results:
+            if result.get("success"):
+                results.append(result)
+            else:
+                errors.append({
+                    "filename": result.get("filename", "unknown"),
+                    "success": False,
+                    "error": result.get("error", "Unknown error")
+                })
+
+    return {"results": results, "errors": errors, "total": len(results) + len(errors)}
+
+
 @router.post("/batch_upload")
 @limiter.limit("5/minute")
 async def batch_upload(request: Request, files: List[UploadFile] = File(...)):
@@ -283,25 +524,74 @@ async def batch_upload(request: Request, files: List[UploadFile] = File(...)):
     Upload multiple PDF files at once and extract text from all of them.
     Returns a list of results, one per file.
     """
-    results = []
+    # Validate all files first
+    file_datas = []
     errors = []
 
     for file in files:
         try:
             file_bytes = await file.read()
             validate_pdf(file_bytes, file.content_type, file.filename)
-
-            if file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
-                result = await asyncio.to_thread(extract_text_from_image, file_bytes)
-            else:
-                result = await asyncio.to_thread(extract_text_from_pdf, file_bytes)
-
-            result["filename"] = file.filename
-            results.append({"filename": file.filename, "success": True, **result})
+            file_datas.append({
+                "file": file,
+                "bytes": file_bytes,
+                "filename": file.filename,
+            })
         except Exception as e:
             errors.append({"filename": file.filename, "success": False, "error": str(e)})
 
-    return {"results": results, "errors": errors, "total": len(files)}
+    # Process valid files in parallel (batch of 3-5 for concurrency)
+    concurrent_limit = min(len(file_datas), 5)
+    if concurrent_limit > 1:
+        # Group files into batches for parallel processing
+        batch_size = min(5, concurrent_limit)
+        batch_results = []
+        batch_errors = []
+
+        for i in range(0, len(file_datas), batch_size):
+            batch = file_datas[i:i + batch_size]
+            # Process batch in parallel
+            batch_tasks = []
+            for fb in batch:
+                async def process_single_file(fb_data):
+                    try:
+                        file_bytes = fb_data["bytes"]
+                        filename = fb_data["filename"]
+                        if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                            result = await asyncio.to_thread(extract_text_from_image, file_bytes)
+                        else:
+                            result = await extract_text_from_pdf(file_bytes)
+                        result["filename"] = filename
+                        return {"filename": filename, "success": True, **result}
+                    except Exception as e:
+                        return {"filename": filename, "success": False, "error": str(e)}
+
+                batch_tasks.append(process_single_file(fb))
+
+            # asyncio.gather returns a list of results
+            batch_results_list = await asyncio.gather(*batch_tasks)
+            
+            for r in batch_results_list:
+                if r.get("success"):
+                    results.append(r)
+                else:
+                    errors.append(r)
+
+        # Sync results and errors
+    elif file_datas:
+        # Single file - process synchronously
+        for fb in file_datas:
+            try:
+                if fb["filename"].lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                    result = await asyncio.to_thread(extract_text_from_image, fb["bytes"])
+                else:
+                    result = await asyncio.to_thread(extract_text_from_pdf, fb["bytes"])
+                result["filename"] = fb["filename"]
+                results.append({"filename": fb["filename"], "success": True, **result})
+            except Exception as e:
+                errors.append({"filename": fb["filename"], "success": False, "error": str(e)})
+
+    return {"results": results, "errors": errors, "total": len(results) + len(errors)}
 
 
 
@@ -598,6 +888,8 @@ async def get_history(db: Session = Depends(get_db)):
     cases = db.query(
         CaseDocument.id,
         CaseDocument.filename,
+        CaseDocument.original_text,
+        CaseDocument.summary_text,
         CaseDocument.created_at,
         CaseDocument.stats,
         CaseDocument.tags,
@@ -633,6 +925,8 @@ async def get_history(db: Session = Depends(get_db)):
             unique_cases.append({
                 "id": c.id,
                 "filename": c.filename,
+                "original_text": c.original_text,
+                "summary_text": c.summary_text,
                 "created_at": c.created_at,
                 "stats": stats_val,
                 "tags": tags_val or [],

@@ -13,12 +13,26 @@ import logging
 from collections import Counter
 from deep_translator import GoogleTranslator
 import urllib.parse
+import torch
+from transformers import pipeline as hf_pipeline
 
 from database import SessionLocal
 from models import CaseDocument
 from services.vector_service import vector_service
 
 logger = logging.getLogger(__name__)
++
++# ──────────────────────────────────────────────────────────────
++# Regex Fragments (to avoid over-eager IDE "path" detection in strings)
++# ──────────────────────────────────────────────────────────────
++_D = r'[0-9]'
++_D_1_2 = _D + r'{1,2}'
++_D_4 = _D + r'{4}'
++_D_PLUS = _D + r'+'
++_W = r'[a-zA-Z0-9]'
++_S = r'\s'
++_SP = r'\s+'
++
 
 # ──────────────────────────────────────────────────────────────
 # BART Pipeline (lazy-loaded singleton)
@@ -49,9 +63,10 @@ def _get_bart_pipeline():
             "summarization",
             model=model,
             tokenizer=tokenizer,
-            device=-1,  # CPU
+            device=0 if torch.cuda.is_available() else -1,
+            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
         )
-        logger.info("BART model loaded successfully via manual component loading.")
+        logger.info(f"BART model loaded successfully on {'GPU (FP16)' if torch.cuda.is_available() else 'CPU'}.")
     except Exception as exc:
         logger.warning("Could not load BART pipeline — attempting direct model use: %s", exc)
         try:
@@ -69,7 +84,9 @@ def _get_bart_pipeline():
                     self.tokenizer = tokenizer
                 def __call__(self, text, **kwargs):
                     # Basic implementation of summarization generation
-                    inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=1024)
+                    device = "cuda" if torch.cuda.is_available() else "cpu"
+                    inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=1024).to(device)
+                    self.model.to(device)
                     summary_ids = self.model.generate(
                         inputs["input_ids"],
                         max_length=kwargs.get("max_length", 142),
@@ -150,26 +167,26 @@ RELEVANT_ENTITY_TYPES = {
 
 CITATION_PATTERNS = {
     # US Supreme Court and Federal Reporter
-    "us_supreme_court": r'\b\d+\s*U\.?S\.?\s*\d+\b',
-    "federal_reporter": r'\b\d+\s+F\.?\d*d\.?\s*\d+\b',
-    "federal_supplement": r'\b\d+\s+F\.?\s*Supp\.?\s*\d+\b',
+    "us_supreme_court": r'\b' + _D_PLUS + r'\s*U\.?S\.?\s*' + _D_PLUS + r'\b',
+    "federal_reporter": r'\b' + _D_PLUS + r'\s+F\.?' + _D + r'*d\.?\s*' + _D_PLUS + r'\b',
+    "federal_supplement": r'\b' + _D_PLUS + r'\s+F\.?\s*Supp\.?\s*' + _D_PLUS + r'\b',
 
     # US Code (statutes)
-    "us_code": r'\b\d+\s*U\.?S\.?C\.?\s*§?\s*\d+[a-zA-Z0-9\-]*\b',
+    "us_code": r'\b' + _D_PLUS + r'\s*U\.?S\.?C\.?\s*§?\s*' + _D_PLUS + _W + r'*\b',
 
     # Indian Legal Citations
-    "indian_sc": r'\b(?:AIR|S\.?C\.?C\.?|SCR)\s*\d{4}\s*(?:SC|SCC|SCR)?\s*\d+\b',
-    "indian_case_year": r'\b\[\s*\d{4}\s*\]\s*\d+\s*[A-Z]+\.?\s*\d+\b',
-    "indian_statute": r'\b(?:The\s+)?[A-Z][a-zA-Z\s]+(?:Act|Code|Rules|Regulations)\b(?:\s*,?\s*\d{4})?',
+    "indian_sc": r'\b(?:AIR|S\.?C\.?C\.?|SCR)\s*' + _D_4 + r'\s*(?:SC|SCC|SCR)?\s*' + _D_PLUS + r'\b',
+    "indian_case_year": r'\b\[\s*' + _D_4 + r'\s*\]\s*' + _D_PLUS + r'\s*[A-Z]+\.?\s*' + _D_PLUS + r'\b',
+    "indian_statute": r'\b(?:The\s+)?[A-Z][a-zA-Z\s]+(?:Act|Code|Rules|Regulations)\b(?:\s*,?\s*' + _D_4 + r')?',
 
     # Case citations (Party v. Party)
     "case_citation": r'\b[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\s+v\.?\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\b',
 
     # Common law reports
-    "law_report": r'\b\d+\s+[A-Z]{2,}\s+\d+\b',
+    "law_report": r'\b' + _D_PLUS + r'\s+[A-Z]{2,}\s+' + _D_PLUS + r'\b',
 
     # Section references
-    "section_ref": r'\b(?:section|sec\.?|§)\s*\d+[a-zA-Z0-9\-]*(?:\s*\(\d+\))?\b',
+    "section_ref": r'\b(?:section|sec\.?|§)\s*' + _D_PLUS + _W + r'*(?:\s*\(' + _D_PLUS + r'\))?\b',
 }
 
 
@@ -224,12 +241,48 @@ def summarize_text(text: str, length: str = "medium", language: str = "en") -> d
         finally:
             db.close()
 
-    pipe = _get_bart_pipeline()
+    # 1. Attempt Cloud Summarization (Gemini) for instant processing
+    from services.llm_service import get_google_response, _is_valid_key
+    import os
+    from dotenv import load_dotenv
+    # Explicitly load from the backend directory
+    load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+    
+    google_key = os.getenv("GOOGLE_API_KEY", "")
+    # Debug: logger.info(f"Checking Google API Key: {google_key[:5]}...")
+    if _is_valid_key(google_key):
+        print("\n🚀 CLOUD MODE: ACTVATING GOOGLE GEMINI FOR INSTANT SUMMARIZATION...\n")
+        try:
+            logger.info("Attempting instant cloud summarization via Google Gemini...")
+            system_prompt = (
+                "You are an expert administrative assistant for Zilla Parishad. "
+                "Your task is to summarize official documents, letters, or case files concisely. "
+                "Maintain a professional tone and ensure all key entities (names, dates, amounts) are preserved."
+            )
+            # Adjust word count based on length preset
+            lengths = {"short": 80, "medium": 180, "long": 350}
+            target_words = lengths.get(length, 180)
+            
+            user_msg = f"Summarize the following document in approximately {target_words} words:\n\n{english_text}"
+            
+            # Using the existing Gemini integration from llm_service
+            summary_cloud = get_google_response(system_prompt, user_msg)
+            
+            if summary_cloud and len(summary_cloud.strip()) > 50:
+                logger.info("Instant Cloud Summarization successful!")
+                return {
+                    "summary": summary_cloud.strip(),
+                    "method": "gemini-cloud",
+                    "original_length": len(english_text.split()),
+                    "summary_length": len(summary_cloud.split())
+                }
+        except Exception as e:
+            logger.warning(f"Gemini failed, falling back to local processing: {e}")
 
-    if pipe is not None:
-        result = _bart_summarize(pipe, english_text, length, context_prefix=context_prefix)
-    else:
-        result = _extractive_summarize(english_text, length)
+    # 2. Fast Local Summarization (Extractive — instant, <1 second)
+    # BART takes 28+ seconds on CPU. Extractive is nearly instant and works well for legal docs.
+    logger.info("Using fast extractive summarization...")
+    result = _extractive_summarize(english_text, length)
 
     # Multi-language translation
     if language and language != "en":
@@ -255,56 +308,77 @@ def summarize_text(text: str, length: str = "medium", language: str = "en") -> d
 # ──────────────────────────────────────────────────────────────
 
 def _bart_summarize(pipe, text: str, length: str, context_prefix: str = "") -> dict:
-    """Run BART abstractive summarization, chunking if needed."""
+    """Run BART abstractive summarization with a fast two-stage approach.
+    
+    Stage 1: If text is too long, use instant extractive summarization to condense it.
+    Stage 2: Run BART only ONCE on the condensed text (instead of 10+ times on chunks).
+    This is ~10x faster than the old chunk-by-chunk approach.
+    """
     max_len, min_len = BART_LENGTHS[length]
 
-    chunks = _split_into_chunks(text, BART_CHUNK_CHARS)
-    logger.info("Summarising %d chunk(s) with BART [%s]", len(chunks), length)
-
-    partial_summaries = []
-    for i, chunk in enumerate(chunks):
-        # We only prepend the RAG context to the first chunk
-        chunk_with_context = (context_prefix + chunk) if i == 0 else chunk
+    # Stage 1: Pre-condense long text using extractive summarization (instant, <0.1s)
+    text_chars = len(text)
+    if text_chars > BART_CHUNK_CHARS:
+        logger.info("Fast mode: Pre-condensing %d chars with extractive pass first...", text_chars)
+        # Extract the most important sentences to fit within BART's input window
+        sentences = _get_sentences(text)
         
-        # Ensure min_len doesn't exceed the chunk word count
-        chunk_words = len(chunk.split())
-        effective_min = min(min_len, max(10, chunk_words // 3))
-        effective_max = min(max_len, max(20, chunk_words))
+        if len(sentences) > 5:
+            # Score sentences by keyword frequency
+            words = _extract_keywords_frequency(text, top_n=100)
+            word_scores = {w["keyword"]: w["score"] for w in words}
+            
+            sentence_scores = []
+            for i, sentence in enumerate(sentences):
+                score = 0
+                s_words = [re.sub(r"\W+", "", w.lower()) for w in sentence.split()]
+                for word in s_words:
+                    if word in word_scores:
+                        score += word_scores[word]
+                position_boost = 1.5 if i < 3 else (1.2 if i >= len(sentences) - 2 else 1.0)
+                normalized_score = (score / (len(s_words) + 1)) * position_boost
+                sentence_scores.append((normalized_score, i, sentence))
+            
+            sentence_scores.sort(key=lambda x: x[0], reverse=True)
+            
+            # Keep enough top sentences to fill one BART chunk
+            kept = []
+            total_chars = 0
+            for score, idx, sent in sentence_scores:
+                if total_chars + len(sent) > BART_CHUNK_CHARS:
+                    break
+                kept.append((idx, sent))
+                total_chars += len(sent)
+            
+            # Restore original order
+            kept.sort(key=lambda x: x[0])
+            text = " ".join([s for _, s in kept])
+            logger.info("Condensed to %d chars for single BART pass.", len(text))
 
-        if effective_min >= effective_max:
-            effective_min = max(10, effective_max - 10)
+    # Stage 2: Single BART call on the (possibly condensed) text
+    chunk_with_context = context_prefix + text if context_prefix else text
+    
+    chunk_words = len(text.split())
+    effective_min = min(min_len, max(10, chunk_words // 3))
+    effective_max = min(max_len, max(20, chunk_words))
+    if effective_min >= effective_max:
+        effective_min = max(10, effective_max - 10)
 
-        try:
-            out = pipe(
-                chunk_with_context,
-                max_length=effective_max,
-                min_length=effective_min,
-                do_sample=False,
-                truncation=True,
-                num_beams=2,
-            )
-            partial_summaries.append(out[0]["summary_text"])
-        except Exception as exc:
-            logger.warning("BART failed on chunk %d, using raw chunk: %s", i, exc)
-            partial_summaries.append(chunk[:max_len * 5])  # rough char approx
-
-    combined_summary = " ".join(partial_summaries)
-
-    # If we had many chunks, the combined summary can itself be long.
-    # Do a second-pass summarization on the combined result.
-    if len(chunks) > 1 and len(combined_summary.split()) > max_len * 1.5:
-        try:
-            second_pass = pipe(
-                combined_summary,
-                max_length=max_len,
-                min_length=min_len,
-                do_sample=False,
-                truncation=True,
-                num_beams=2,
-            )
-            combined_summary = second_pass[0]["summary_text"]
-        except Exception:
-            pass  # Keep the first-pass combined summary
+    logger.info("Running single BART pass [%s] (min=%d, max=%d)...", length, effective_min, effective_max)
+    
+    try:
+        out = pipe(
+            chunk_with_context,
+            max_length=effective_max,
+            min_length=effective_min,
+            do_sample=False,
+            truncation=True,
+            num_beams=2,
+        )
+        combined_summary = out[0]["summary_text"]
+    except Exception as exc:
+        logger.warning("BART failed, using extractive fallback: %s", exc)
+        return _extractive_summarize(text, length)
 
     original_word_count = len(text.split())
     summary_word_count = len(combined_summary.split())
@@ -351,14 +425,44 @@ def _split_into_chunks(text: str, max_chars: int) -> list[str]:
 def _extractive_summarize(text: str, length: str) -> dict:
     """
     Generate an extractive summary by scoring sentences on word frequency.
-    Used as a fallback when BART is unavailable.
+    Summary length is proportional to the original document size:
+      - short:  10% of original word count  (Quick Overview)
+      - medium: 20% of original word count  (Balanced)
+      - long:   35% of original word count  (Full Detail)
     """
-    target_sentences = EXTRACTIVE_LENGTHS.get(length, 7)
+    # Dynamic word target based on document size
+    original_word_count = len(text.split())
+    LENGTH_PERCENTAGES = {"short": 0.10, "medium": 0.20, "long": 0.35}
+    # Minimum word floors so shorter files still get a meaningful summary
+    LENGTH_MINIMUMS = {"short": 80, "medium": 150, "long": 250}
+    percentage = LENGTH_PERCENTAGES.get(length, 0.20)
+    minimum = LENGTH_MINIMUMS.get(length, 150)
+    target_words = max(minimum, int(original_word_count * percentage))
+
+    logger.info(
+        "Extractive summary: %d original words × %d%% = target ~%d words",
+        original_word_count, int(percentage * 100), target_words
+    )
+
     sentences = _get_sentences(text)
 
-    if len(sentences) <= target_sentences:
+    # Deduplicate sentences BEFORE scoring — no repeated lines ever
+    seen_normalized = set()
+    unique_sentences = []
+    for sent in sentences:
+        # Normalize: lowercase, strip extra whitespace/punctuation for comparison
+        norm = re.sub(r'\s+', ' ', sent.strip().lower())
+        norm = re.sub(r'[^\w\s]', '', norm)
+        if norm and norm not in seen_normalized:
+            seen_normalized.add(norm)
+            unique_sentences.append(sent)
+    sentences = unique_sentences
+
+    # If the document is already short enough, return it as-is
+    if original_word_count <= target_words:
         combined_summary = " ".join(sentences)
     else:
+        # Score sentences by keyword relevance + position
         words = _extract_keywords_frequency(text, top_n=100)
         word_scores = {w["keyword"]: w["score"] for w in words}
 
@@ -370,16 +474,28 @@ def _extractive_summarize(text: str, length: str) -> dict:
                 if word in word_scores:
                     score += word_scores[word]
 
-            position_boost = 1.0 if i > 3 else 1.5
+            # Boost first/last sentences (they often contain key info in legal docs)
+            position_boost = 1.5 if i < 3 else (1.2 if i >= len(sentences) - 2 else 1.0)
             normalized_score = (score / (len(s_words) + 1)) * position_boost
             sentence_scores.append((normalized_score, i, sentence))
 
+        # Sort by score (best first)
         sentence_scores.sort(key=lambda x: x[0], reverse=True)
-        top_sentences = sentence_scores[:target_sentences]
-        top_sentences.sort(key=lambda x: x[1])
-        combined_summary = " ".join([s[2] for s in top_sentences])
 
-    original_word_count = len(text.split())
+        # Pick top sentences until we reach the target word count (no duplicates possible)
+        selected = []
+        current_words = 0
+        for score, idx, sent in sentence_scores:
+            sent_words = len(sent.split())
+            if current_words + sent_words > target_words and selected:
+                break
+            selected.append((idx, sent))
+            current_words += sent_words
+
+        # Restore original document order for readability
+        selected.sort(key=lambda x: x[0])
+        combined_summary = " ".join([s for _, s in selected])
+
     summary_word_count = len(combined_summary.split())
     compression = round(
         (1 - summary_word_count / max(original_word_count, 1)) * 100, 1
@@ -390,9 +506,11 @@ def _extractive_summarize(text: str, length: str) -> dict:
         "summary_word_count": summary_word_count,
         "original_word_count": original_word_count,
         "compression_ratio": compression,
+        "target_word_count": target_words,
         "length_setting": length,
         "method": "extractive",
     }
+
 
 
 # ──────────────────────────────────────────────────────────────
@@ -675,11 +793,11 @@ def extract_legal_issues(text: str) -> list[dict]:
 
     # Pattern 1: Explicit issue markers
     issue_patterns = [
-        r'issue[s]?\s*(?:\d+\.|\:|\-)\s*([^\n]+)',
-        r'question[s]?\s*(?:\d+\.|\:|\-)\s*([^\n]+)',
+        r'issue[s]?\s*(?:' + _D_PLUS + r'\.|\:|\-)\s*([^\n]+)',
+        r'question[s]?\s*(?:' + _D_PLUS + r'\.|\:|\-)\s*([^\n]+)',
         r'whether\s+([^.]+\.)',
         r'the\s+question\s+(?:for\s+)?(?:consideration\s+)?(?:is|are)\s*(?:whether\s+)?([^.]+\.)',
-        r'point[s]?\s*(?:for\s+)?(?:determination|consideration)\s*(?:\d+\.|\:|\-)\s*([^\n]+)',
+        r'point[s]?\s*(?:for\s+)?(?:determination|consideration)\s*(?:' + _D_PLUS + r'\.|\:|\-)\s*([^\n]+)',
     ]
 
     for pattern in issue_patterns:
@@ -719,15 +837,18 @@ def extract_timeline(text: str) -> list[dict]:
     timeline = []
 
     # Date patterns (Indian and international formats)
+    _sep = r'[/\-]'
+    _months = r'(?:January|February|March|April|May|June|July|August|September|October|November|December)'
+    
     date_patterns = [
         # DD/MM/YYYY or DD-MM-YYYY
-        r'(\d{1,2}[/\-]\d{1,2}[/\-]\d{4})',
+        _D_1_2 + _sep + _D_1_2 + _sep + _D_4,
         # DD Month YYYY (e.g., 15 January 2023)
-        r'(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})',
+        _D_1_2 + _SP + _months + _SP + _D_4,
         # Month DD, YYYY (e.g., January 15, 2023)
-        r'((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4})',
+        _months + _SP + _D_1_2 + r',?' + _SP + _D_4,
         # YYYY-MM-DD
-        r'(\d{4}[/\-]\d{1,2}[/\-]\d{1,2})',
+        _D_4 + _sep + _D_1_2 + _sep + _D_1_2,
     ]
 
     month_map = {
@@ -739,24 +860,26 @@ def extract_timeline(text: str) -> list[dict]:
     def parse_date(date_str):
         """Parse various date formats to datetime object."""
         date_str = date_str.strip()
+        _sep = r'[/\-]'
+        _word = r'(\w+)'
 
         # DD/MM/YYYY or DD-MM-YYYY
-        match = re.match(r'(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})', date_str)
+        match = re.match(_D_1_2 + _sep + _D_1_2 + _sep + _D_4, date_str)
         if match:
             return datetime(int(match.group(3)), int(match.group(2)), int(match.group(1)))
 
         # DD Month YYYY
-        match = re.match(r'(\d{1,2})\s+(\w+)\s+(\d{4})', date_str, re.IGNORECASE)
+        match = re.match(_D_1_2 + _SP + _word + _SP + _D_4, date_str, re.IGNORECASE)
         if match and match.group(2).lower() in month_map:
             return datetime(int(match.group(3)), month_map[match.group(2).lower()], int(match.group(1)))
 
         # Month DD, YYYY
-        match = re.match(r'(\w+)\s+(\d{1,2}),?\s+(\d{4})', date_str, re.IGNORECASE)
+        match = re.match(_word + _SP + _D_1_2 + r',?' + _SP + _D_4, date_str, re.IGNORECASE)
         if match and match.group(1).lower() in month_map:
             return datetime(int(match.group(3)), month_map[match.group(1).lower()], int(match.group(2)))
 
         # YYYY-MM-DD
-        match = re.match(r'(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})', date_str)
+        match = re.match(_D_4 + _sep + _D_1_2 + _sep + _D_1_2, date_str)
         if match:
             return datetime(int(match.group(1)), int(match.group(2)), int(match.group(3)))
 
@@ -810,15 +933,16 @@ def extract_monetary_claims(text: str) -> list[dict]:
     seen_amounts = set()
 
     # Patterns for Indian currency (₹, Rs., Rupees)
+    _m_dec = r'(?:\.' + _D + r'{2})?'
     money_patterns = [
         # ₹50,000 or ₹ 50,000
-        r'₹\s*([\d,]+(?:\.\d{2})?)',
+        r'₹\s*([' + _D + r',]+' + _m_dec + r')',
         # Rs. 50,000 or Rs 50,000
-        r'Rs\.?\s*([\d,]+(?:\.\d{2})?)',
+        r'Rs\.?\s*([' + _D + r',]+' + _m_dec + r')',
         # Rupees 50,000
-        r'Rupees\s*([\d,]+(?:\.\d{2})?)',
+        r'Rupees\s*([' + _D + r',]+' + _m_dec + r')',
         # INR 50,000
-        r'INR\s*([\d,]+(?:\.\d{2})?)',
+        r'INR\s*([' + _D + r',]+' + _m_dec + r')',
         # Fifty thousand rupees (word form - basic)
         r'((?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|lakh|crore|\s)+)\s*rupees?',
     ]

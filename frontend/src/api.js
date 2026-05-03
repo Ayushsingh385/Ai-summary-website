@@ -53,6 +53,20 @@ export const uploadPdf = async (file) => {
   return response.data;
 };
 
+export const uploadLazy = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post('/upload_lazy', formData);
+  return response.data;
+};
+
+export const processLazy = async (jobId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post(`/process_lazy/${jobId}`, formData);
+  return response.data;
+};
+
 export const summarizeText = async (text, length, language = "en") => {
   const response = await api.post('/summarize', { text, length, language });
   return response.data;

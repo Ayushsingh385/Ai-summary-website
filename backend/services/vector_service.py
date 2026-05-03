@@ -19,8 +19,10 @@ class VectorService:
         """Lazy-load the SentenceTransformer model."""
         if self._model is None:
             from sentence_transformers import SentenceTransformer
-            print(f"Loading SentenceTransformer {MODEL_NAME}...")
-            self._model = SentenceTransformer(MODEL_NAME)
+            import torch
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            print(f"Loading SentenceTransformer {MODEL_NAME} on {device}...")
+            self._model = SentenceTransformer(MODEL_NAME, device=device)
         return self._model
 
     def load_index(self):
