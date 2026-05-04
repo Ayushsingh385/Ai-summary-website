@@ -21,18 +21,18 @@ from models import CaseDocument
 from services.vector_service import vector_service
 
 logger = logging.getLogger(__name__)
-+
-+# ──────────────────────────────────────────────────────────────
-+# Regex Fragments (to avoid over-eager IDE "path" detection in strings)
-+# ──────────────────────────────────────────────────────────────
-+_D = r'[0-9]'
-+_D_1_2 = _D + r'{1,2}'
-+_D_4 = _D + r'{4}'
-+_D_PLUS = _D + r'+'
-+_W = r'[a-zA-Z0-9]'
-+_S = r'\s'
-+_SP = r'\s+'
-+
+
+# ──────────────────────────────────────────────────────────────
+# Regex Fragments (to avoid over-eager IDE "path" detection in strings)
+# ──────────────────────────────────────────────────────────────
+_D = r'[0-9]'
+_D_1_2 = _D + r'{1,2}'
+_D_4 = _D + r'{4}'
+_D_PLUS = _D + r'+'
+_W = r'[a-zA-Z0-9]'
+_S = r'\s'
+_SP = r'\s+'
+
 
 # ──────────────────────────────────────────────────────────────
 # BART Pipeline (lazy-loaded singleton)
@@ -241,48 +241,62 @@ def summarize_text(text: str, length: str = "medium", language: str = "en") -> d
         finally:
             db.close()
 
-    # 1. Attempt Cloud Summarization (Gemini) for instant processing
-    from services.llm_service import get_google_response, _is_valid_key
-    import os
-    from dotenv import load_dotenv
-    # Explicitly load from the backend directory
-    load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+    # 1. Attempt Advanced Summarization via configured LLM providers
+    from services.llm_service import get_llm_response
     
-    google_key = os.getenv("GOOGLE_API_KEY", "")
-    # Debug: logger.info(f"Checking Google API Key: {google_key[:5]}...")
-    if _is_valid_key(google_key):
-        print("\n🚀 CLOUD MODE: ACTVATING GOOGLE GEMINI FOR INSTANT SUMMARIZATION...\n")
-        try:
-            logger.info("Attempting instant cloud summarization via Google Gemini...")
-            system_prompt = (
-                "You are an expert administrative assistant for Zilla Parishad. "
-                "Your task is to summarize official documents, letters, or case files concisely. "
-                "Maintain a professional tone and ensure all key entities (names, dates, amounts) are preserved."
-            )
-            # Adjust word count based on length preset
-            lengths = {"short": 80, "medium": 180, "long": 350}
-            target_words = lengths.get(length, 180)
-            
-            user_msg = f"Summarize the following document in approximately {target_words} words:\n\n{english_text}"
-            
-            # Using the existing Gemini integration from llm_service
-            summary_cloud = get_google_response(system_prompt, user_msg)
-            
-            if summary_cloud and len(summary_cloud.strip()) > 50:
-                logger.info("Instant Cloud Summarization successful!")
-                return {
-                    "summary": summary_cloud.strip(),
-                    "method": "gemini-cloud",
-                    "original_length": len(english_text.split()),
-                    "summary_length": len(summary_cloud.split())
-                }
-        except Exception as e:
-            logger.warning(f"Gemini failed, falling back to local processing: {e}")
-
-    # 2. Fast Local Summarization (Extractive — instant, <1 second)
-    # BART takes 28+ seconds on CPU. Extractive is nearly instant and works well for legal docs.
-    logger.info("Using fast extractive summarization...")
-    result = _extractive_summarize(english_text, length)
+    system_prompt = (
+        "You are an expert administrative assistant for Zilla Parishad. "
+        "Your task is to summarize official documents, letters, or case files concisely. "
+        "Maintain a professional tone and ensure all key entities (names, dates, amounts) are preserved. "
+        "Write in proper grammatical sentences and ensure the summary has a clear beginning, middle, and end."
+    )
+    # Calculate dynamic word target — higher ratios for short docs, tighter for long
+    original_word_count = len(english_text.split())
+    if original_word_count < 1500:
+        llm_percentages = {"short": 0.12, "medium": 0.20, "long": 0.30}
+        llm_minimums = {"short": 50, "medium": 100, "long": 150}
+    else:
+        llm_percentages = {"short": 0.05, "medium": 0.10, "long": 0.15}
+        llm_minimums = {"short": 50, "medium": 100, "long": 150}
+    target_words = max(llm_minimums.get(length, 100), int(original_word_count * llm_percentages.get(length, 0.10)))
+    
+    user_msg = f"Summarize the following document in approximately {target_words} words:\n\n{english_text}"
+    
+    try:
+        logger.info("Attempting abstractive summarization via LLM providers...")
+        llm_out = get_llm_response(user_message=user_msg, system_prompt=system_prompt)
+        summary_text = llm_out.get("response", "")
+        provider = llm_out.get("provider", "unknown")
+        
+        # Check if it hit the offline fallback text
+        if provider != "offline" and summary_text and len(summary_text.strip()) > 50:
+            logger.info(f"LLM Summarization successful via {provider}!")
+            result = {
+                "summary": summary_text.strip(),
+                "method": f"{provider}-abstractive",
+                "original_word_count": len(english_text.split()),
+                "summary_word_count": len(summary_text.split())
+            }
+        else:
+            raise Exception("LLM provider returned offline fallback or empty response.")
+    except Exception as e:
+        logger.warning(f"LLM providers failed ({e}), falling back to local processing.")
+        
+        # 2. Local BART Fallback — ONLY for short documents (<1500 words)
+        #    BART can only handle ~1024 tokens. For longer docs, its pre-condensation
+        #    step destroys too much content, producing tiny, incoherent summaries.
+        word_count = len(english_text.split())
+        pipe = _get_bart_pipeline()
+        if pipe is not None and word_count < 1500:
+            logger.info("Using local BART abstractive summarization for short document...")
+            result = _bart_summarize(pipe, english_text, length, context_prefix)
+        else:
+            # 3. Structured Extractive Summarization for long documents
+            if word_count >= 1500:
+                logger.info(f"Document is {word_count} words — too long for BART. Using structured extractive summarization...")
+            else:
+                logger.warning("BART unavailable, using structured extractive summarization...")
+            result = _extractive_summarize(english_text, length)
 
     # Multi-language translation
     if language and language != "en":
@@ -424,19 +438,27 @@ def _split_into_chunks(text: str, max_chars: int) -> list[str]:
 
 def _extractive_summarize(text: str, length: str) -> dict:
     """
-    Generate an extractive summary by scoring sentences on word frequency.
+    Generate a flowing extractive summary by scoring sentences on word frequency
+    and position, then selecting the most important sentences up to a word budget.
     Summary length is proportional to the original document size:
-      - short:  10% of original word count  (Quick Overview)
-      - medium: 20% of original word count  (Balanced)
-      - long:   35% of original word count  (Full Detail)
+      - short:  15% of original word count
+      - medium: 25% of original word count
+      - long:   40% of original word count
+    
+    Sentences are drawn from the opening, body, and closing of the document
+    to ensure coverage, then merged into a single flowing paragraph in their
+    original order.
     """
     # Dynamic word target based on document size
     original_word_count = len(text.split())
-    LENGTH_PERCENTAGES = {"short": 0.10, "medium": 0.20, "long": 0.35}
-    # Minimum word floors so shorter files still get a meaningful summary
-    LENGTH_MINIMUMS = {"short": 80, "medium": 150, "long": 250}
-    percentage = LENGTH_PERCENTAGES.get(length, 0.20)
-    minimum = LENGTH_MINIMUMS.get(length, 150)
+    if original_word_count < 1500:
+        LENGTH_PERCENTAGES = {"short": 0.12, "medium": 0.20, "long": 0.30}
+        LENGTH_MINIMUMS = {"short": 50, "medium": 100, "long": 150}
+    else:
+        LENGTH_PERCENTAGES = {"short": 0.05, "medium": 0.10, "long": 0.15}
+        LENGTH_MINIMUMS = {"short": 50, "medium": 100, "long": 150}
+    percentage = LENGTH_PERCENTAGES.get(length, 0.10)
+    minimum = LENGTH_MINIMUMS.get(length, 100)
     target_words = max(minimum, int(original_word_count * percentage))
 
     logger.info(
@@ -474,27 +496,79 @@ def _extractive_summarize(text: str, length: str) -> dict:
                 if word in word_scores:
                     score += word_scores[word]
 
-            # Boost first/last sentences (they often contain key info in legal docs)
-            position_boost = 1.5 if i < 3 else (1.2 if i >= len(sentences) - 2 else 1.0)
+            # Position-based boosting for document structure
+            total_sents = len(sentences)
+            if i < 5:
+                # Opening sentences — usually contain the subject/topic
+                position_boost = 1.8
+            elif i >= total_sents - 3:
+                # Closing sentences — usually contain conclusions/orders
+                position_boost = 1.5
+            elif i < total_sents * 0.15:
+                # Early section — background/context
+                position_boost = 1.3
+            elif i >= total_sents * 0.85:
+                # Late section — decisions/outcomes
+                position_boost = 1.3
+            else:
+                position_boost = 1.0
+
             normalized_score = (score / (len(s_words) + 1)) * position_boost
             sentence_scores.append((normalized_score, i, sentence))
 
         # Sort by score (best first)
         sentence_scores.sort(key=lambda x: x[0], reverse=True)
 
-        # Pick top sentences until we reach the target word count (no duplicates possible)
-        selected = []
-        current_words = 0
-        for score, idx, sent in sentence_scores:
-            sent_words = len(sent.split())
-            if current_words + sent_words > target_words and selected:
-                break
-            selected.append((idx, sent))
-            current_words += sent_words
+        # Allocate word budget across 3 sections
+        overview_budget = int(target_words * 0.20)   # 20% for opening
+        body_budget = int(target_words * 0.60)        # 60% for key details
+        conclusion_budget = int(target_words * 0.20)  # 20% for closing
 
-        # Restore original document order for readability
-        selected.sort(key=lambda x: x[0])
-        combined_summary = " ".join([s for _, s in selected])
+        total_sents = len(sentences)
+        opening_range = set(range(0, min(int(total_sents * 0.15), total_sents)))
+        closing_range = set(range(max(int(total_sents * 0.85), 0), total_sents))
+        body_range = set(range(total_sents)) - opening_range - closing_range
+
+        def pick_sentences(scored_sents, allowed_indices, budget):
+            picked = []
+            current_words = 0
+            for score, idx, sent in scored_sents:
+                if idx not in allowed_indices:
+                    continue
+                sent_words = len(sent.split())
+                if current_words + sent_words > budget and picked:
+                    break
+                picked.append((idx, sent))
+                current_words += sent_words
+            return picked
+
+        overview_sents = pick_sentences(sentence_scores, opening_range, overview_budget)
+        body_sents = pick_sentences(sentence_scores, body_range, body_budget)
+        conclusion_sents = pick_sentences(sentence_scores, closing_range, conclusion_budget)
+
+        # Restore original document order within each section
+        overview_sents.sort(key=lambda x: x[0])
+        body_sents.sort(key=lambda x: x[0])
+        conclusion_sents.sort(key=lambda x: x[0])
+
+        # Merge all selected sentences into one flowing summary
+        all_selected = overview_sents + body_sents + conclusion_sents
+        # Restore original document order across all sections
+        all_selected.sort(key=lambda x: x[0])
+        combined_summary = " ".join([s for _, s in all_selected])
+
+        # If somehow sections are empty, fall back to flat selection
+        if not combined_summary.strip():
+            selected = []
+            current_words = 0
+            for score, idx, sent in sentence_scores:
+                sent_words = len(sent.split())
+                if current_words + sent_words > target_words and selected:
+                    break
+                selected.append((idx, sent))
+                current_words += sent_words
+            selected.sort(key=lambda x: x[0])
+            combined_summary = " ".join([s for _, s in selected])
 
     summary_word_count = len(combined_summary.split())
     compression = round(

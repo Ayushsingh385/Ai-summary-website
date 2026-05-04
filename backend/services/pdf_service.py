@@ -107,8 +107,11 @@ async def extract_text_from_pdf(file_bytes: bytes) -> dict:
         pdf.close()
         full_text = "\n\n".join(full_text_list).strip()
 
-        if not full_text or len(full_text) < 10:
-            logger.info("PDF text extraction failed or text is too short. Attempting parallel OCR fallback...")
+        # If average text per page is very low (< 50 chars), it's likely a scanned PDF needing OCR
+        avg_chars_per_page = len(full_text) / max(1, page_count)
+        
+        if not full_text or avg_chars_per_page < 50:
+            logger.info(f"PDF text extraction yielded low text (avg {avg_chars_per_page:.1f} chars/page). Attempting parallel OCR fallback...")
             try:
                 # Load document with pdfium for faster rendering than Poppler
                 pdf = pdfium.PdfDocument(file_bytes)
@@ -142,7 +145,7 @@ async def extract_text_from_pdf(file_bytes: bytes) -> dict:
                 pages_text = ocr_results
                 full_text_list = [res["text"] for res in ocr_results]
                 full_text = "\n\n".join(full_text_list).strip()
-                page_count = len(images)
+                page_count = len(ocr_results)
                 
             except Exception as ocr_err:
                 logger.error(f"Parallel OCR fallback failed: {ocr_err}")

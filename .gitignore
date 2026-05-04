@@ -29,4 +29,6 @@ backend/scratch/
 
 # Data
 ZP_Case_Letters/
-ZP_Strictly_Unique_Cases/
+ZP_Dataset_Batch_3/
+*.bin
+*.log
