@@ -59,12 +59,21 @@ def generate_summary_pdf(
              ln=True, align="C")
     pdf.ln(8)
 
-    # ── Summary body ──
+    # Handle encoding — replace unsupported characters
+    try:
+        safe_summary = summary.encode("latin-1").decode("latin-1")
+    except UnicodeEncodeError:
+        safe_summary = summary.encode("latin-1", errors="replace").decode("latin-1")
+        # Add a warning note to the PDF
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(200, 50, 50)
+        pdf.multi_cell(0, 6, "Note: Standard PDF export only supports Latin characters. "
+                             "Some translated text could not be rendered properly. "
+                             "Please download the DOCX version for perfect multilingual support.")
+        pdf.ln(5)
+
     pdf.set_font("Helvetica", "", 12)
     pdf.set_text_color(30, 30, 30)
-
-    # Handle encoding — replace unsupported characters
-    safe_summary = summary.encode("latin-1", errors="replace").decode("latin-1")
     pdf.multi_cell(0, 7, safe_summary)
 
     pdf.ln(10)
@@ -236,15 +245,24 @@ def generate_original_pdf(
     pdf.cell(0, 6, f"Word count: {original_word_count} words", ln=True, align="C")
     pdf.ln(8)
 
-    # ── Document body ──
-    pdf.set_font("Helvetica", "", 11)
-    pdf.set_text_color(30, 30, 30)
-
-    # Clean text: replace multiple newlines with single ones, replace unsupported chars
+    # Clean text: replace multiple newlines with single ones
     import re
     cleaned_text = re.sub(r'\n{3,}', '\n\n', original_text)
-    safe_text = cleaned_text.encode("latin-1", errors="replace").decode("latin-1")
     
+    # Handle encoding — replace unsupported chars
+    try:
+        safe_text = cleaned_text.encode("latin-1").decode("latin-1")
+    except UnicodeEncodeError:
+        safe_text = cleaned_text.encode("latin-1", errors="replace").decode("latin-1")
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(200, 50, 50)
+        pdf.multi_cell(0, 6, "Note: Standard PDF export only supports Latin characters. "
+                             "Some native text could not be rendered properly. "
+                             "Please download the DOCX version for perfect multilingual support.")
+        pdf.ln(5)
+
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_text_color(30, 30, 30)
     pdf.multi_cell(0, 7, safe_text)
 
     pdf.ln(10)
