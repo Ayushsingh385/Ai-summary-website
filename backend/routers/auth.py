@@ -102,3 +102,31 @@ def signin(request: Request, user: schemas.UserLogin, db: Session = Depends(get_
 @router.get("/me", response_model=schemas.UserResponse)
 def read_users_me(current_user: models.User = Depends(get_current_user)):
     return current_user
+
+def get_current_admin(current_user: models.User = Depends(get_current_user)):
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have enough privileges"
+        )
+    return current_user
+
+@router.get("/admin/stats")
+@limiter.limit("10/minute")
+def get_admin_stats(request: Request, current_admin: models.User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """System-wide statistics for the admin dashboard."""
+    total_users = db.query(models.User).count()
+    total_cases = db.query(models.CaseDocument).count()
+    total_comparisons = db.query(models.CaseComparison).count()
+    
+    # Let's get the latest 5 users
+    recent_users = db.query(models.User).order_by(models.User.id.desc()).limit(5).all()
+    recent_users_list = [{"id": u.id, "user_id": u.user_id, "is_admin": u.is_admin} for u in recent_users]
+    
+    return {
+        "total_users": total_users,
+        "total_cases_ingested": total_cases,
+        "total_comparisons": total_comparisons,
+        "recent_users": recent_users_list
+    }
+

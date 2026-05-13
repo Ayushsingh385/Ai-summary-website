@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { FiBriefcase, FiClock, FiLogOut, FiUser, FiSun, FiMoon } from 'react-icons/fi';
 
-const Header = ({ onOpenHistory, onLogout, userProfile, theme, toggleTheme, isSidebarOpen }) => {
+const Header = ({ onOpenHistory, onLogout, userProfile, theme, toggleTheme, isSidebarOpen, onOpenAdmin }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -103,10 +103,26 @@ const Header = ({ onOpenHistory, onLogout, userProfile, theme, toggleTheme, isSi
           style={{
             position: 'absolute',
             top: 0,
-            right: 120,
+            right: userProfile?.is_admin ? 260 : 120,
           }}
         >
           <FiClock /> History
+        </button>
+      )}
+
+      {userProfile?.is_admin && onOpenAdmin && (
+        <button 
+          onClick={onOpenAdmin}
+          className="header-btn"
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 120,
+            background: 'var(--accent-primary)',
+            color: 'white'
+          }}
+        >
+          <FiUser /> Admin Panel
         </button>
       )}
       

@@ -235,3 +235,13 @@ export const getChatbotStatus = async () => {
   const response = await api.get('/chatbot/status');
   return response.data;
 };
+
+export const fetchAdminStats = async () => {
+  const token = localStorage.getItem('token');
+  const response = await axios.get(`${AUTH_URL}/admin/stats`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  return response.data;
+};

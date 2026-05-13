@@ -17,6 +17,7 @@ import TagsEditor from './components/TagsEditor';
 import DocumentVault from './components/DocumentVault';
 import BatchUpload from './components/BatchUpload';
 import BriefGenerator from './components/BriefGenerator';
+import AdminDashboard from './components/AdminDashboard';
 import { FiPieChart } from 'react-icons/fi';
 
 function App() {
@@ -62,7 +63,7 @@ function App() {
   const [currentTags, setCurrentTags] = useState([]);
   
   // UI State
-  const [appMode, setAppMode] = useState('summarize'); // 'summarize' | 'compare' | 'analytics' | 'vault' | 'batch'
+  const [appMode, setAppMode] = useState('summarize'); // 'summarize' | 'compare' | 'analytics' | 'vault' | 'batch' | 'admin'
   const [selectedLength, setSelectedLength] = useState('medium');
   const [selectedLanguage, setSelectedLanguage] = useState('en');
   const [isDownloading, setIsDownloading] = useState(false);
@@ -295,6 +296,7 @@ function App() {
         theme={theme}
         toggleTheme={toggleTheme}
         isSidebarOpen={isSidebarOpen}
+        onOpenAdmin={() => { setAppMode('admin'); setHistoricalComparisonData(null); }}
       />
 
       {/* Sidebar Backdrop Overlay */}
@@ -366,6 +368,17 @@ function App() {
               ← Back to file
             </button>
             <AnalyticsDashboard onSelectCase={onSelectCaseFromHistory} />
+          </>
+        ) : appMode === 'admin' ? (
+          <>
+            <button
+              className="btn btn-outline"
+              onClick={() => setAppMode('summarize')}
+              style={{ marginBottom: '1rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+            >
+              ← Back to file
+            </button>
+            <AdminDashboard />
           </>
         ) : appMode === 'compare' ? (
           <CompareMode selectedLanguage={selectedLanguage} initialHistoricalComparison={historicalComparisonData} />

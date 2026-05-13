@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Boolean
 from datetime import datetime
 from database import Base
 
@@ -25,6 +25,7 @@ class User(Base):
     employee_id = Column(String)
     email_id = Column(String, unique=True, index=True)
     hashed_password = Column(String)
+    is_admin = Column(Boolean, default=False)
 
 class CaseComparison(Base):
     __tablename__ = "case_comparisons"
