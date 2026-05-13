@@ -8,7 +8,8 @@ import {
   FiUsers,
   FiDatabase,
   FiInfo,
-  FiChevronDown
+  FiChevronDown,
+  FiGlobe
 } from 'react-icons/fi';
 import { chatWithBot } from '../api';
 
@@ -49,6 +50,7 @@ const ChatBot = ({ documentText, keywords }) => {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [globalMode, setGlobalMode] = useState(false);
   const messagesEndRef = useRef(null);
   const chatRef = useRef(null);
 
@@ -87,7 +89,7 @@ const ChatBot = ({ documentText, keywords }) => {
     setIsLoading(true);
 
     try {
-      const data = await chatWithBot(messageText, documentText, keywords);
+      const data = await chatWithBot(messageText, documentText, keywords, globalMode);
       const botMessage = { id: Date.now() + 1, role: 'bot', text: data.response };
       setMessages(prev => [...prev, botMessage]);
 
@@ -148,6 +150,28 @@ const ChatBot = ({ documentText, keywords }) => {
                 </div>
                 <div>
                   <div style={styles.headerTitle}>Legal Assistant</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '4px' }}>
+                    <button 
+                      onClick={() => setGlobalMode(false)}
+                      style={{
+                        ...styles.modeBtn,
+                        background: !globalMode ? 'var(--accent-primary)' : 'transparent',
+                        color: !globalMode ? '#fff' : 'var(--text-muted)'
+                      }}
+                    >
+                      <FiFileText size={10} /> This Doc
+                    </button>
+                    <button 
+                      onClick={() => setGlobalMode(true)}
+                      style={{
+                        ...styles.modeBtn,
+                        background: globalMode ? 'var(--accent-tertiary, #10b981)' : 'transparent',
+                        color: globalMode ? '#fff' : 'var(--text-muted)'
+                      }}
+                    >
+                      <FiGlobe size={10} /> All Cases
+                    </button>
+                  </div>
                 </div>
               </div>
               <button
@@ -210,14 +234,14 @@ const ChatBot = ({ documentText, keywords }) => {
             </div>
 
             <div style={styles.footer}>
-              {!documentText && (
+              {!documentText && !globalMode && (
                 <div style={styles.hint}>
                   <FiInfo size={14} />
-                  <span style={{ marginLeft: '6px' }}>Upload a document for context-aware answers</span>
+                  <span style={{ marginLeft: '6px' }}>Upload a document for context-aware answers, or switch to 'All Cases' mode.</span>
                 </div>
               )}
 
-              <QuickActions onAction={handleSend} disabled={isLoading || !documentText} />
+              <QuickActions onAction={handleSend} disabled={isLoading || (!documentText && !globalMode)} />
 
               <form onSubmit={handleSubmit} style={styles.inputArea}>
                 <input
@@ -405,6 +429,18 @@ const styles = {
     borderRadius: '50%',
     display: 'inline-block',
     animation: 'typing 1.4s infinite ease-in-out'
+  },
+  modeBtn: {
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: '12px',
+    padding: '2px 8px',
+    fontSize: '0.65rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    transition: 'all 0.2s'
   }
 };
 

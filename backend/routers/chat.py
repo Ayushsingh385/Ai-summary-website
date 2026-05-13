@@ -12,6 +12,7 @@ class ChatRequest(BaseModel):
     query: str
     document_text: Optional[str] = None
     document_keywords: Optional[list] = None
+    global_mode: Optional[bool] = False
 
 @router.post("/")
 async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
@@ -25,7 +26,8 @@ async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
         request.query, 
         request.document_text, 
         request.document_keywords,
-        db
+        db,
+        request.global_mode
     )
     
     # result is now {"response": str, "provider": str}

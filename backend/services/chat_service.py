@@ -108,15 +108,21 @@ def process_chat_query(
     query: str,
     document_text: str = None,
     keywords: list = None,
-    db: Session = None
+    db: Session = None,
+    global_mode: bool = False
 ) -> Dict[str, Any]:
     """
     Process a chat query using intent routing and LLM.
     Returns a dict with 'response' and 'provider' (meta-info).
     """
     if not query or not query.strip():
-        return {"response": "Please ask me something about your documents.", "provider": "local"}
+        return {"response": "Please ask me something.", "provider": "local"}
 
+    # Handle Global RAG Mode
+    if global_mode and db:
+        return _handle_global_rag(query, db)
+
+    # Single-document Intent parsing
     intent = detect_intent(query)
 
     # Handle structured intents with local logic (marked as 'local' provider)
@@ -145,7 +151,6 @@ If you don't know something, say so honestly rather than making things up.
 Keep responses focused and actionable."""
 
     try:
-        # This now returns {"response": "...", "provider": "..."}
         result = get_llm_response(
             user_message=query,
             system_prompt=system_prompt,
@@ -153,6 +158,52 @@ Keep responses focused and actionable."""
         )
         return result
     except Exception as e:
-        # Fallback response if LLM fails
         msg = "I've currently reached my daily processing limit for advanced cloud analysis. No worries! I'm switching to **Local Processing Mode** to continue helping you. The advanced analysis limit resets daily at **midnight Pacific Time (approx. 12:30 PM IST)**. My answers might be a bit simpler for now, but I can still assist with your legal documents!"
         return {"response": msg, "provider": "offline"}
+
+
+def _handle_global_rag(query: str, db: Session) -> Dict[str, Any]:
+    """Handle a query that searches across ALL ingested cases via FAISS."""
+    # Search FAISS index for relevant cases
+    results = vector_service.find_similar(query, top_k=3, threshold=0.1)
+    
+    if not results:
+        return {
+            "response": "I searched the entire database but couldn't find any cases related to your query.", 
+            "provider": "local"
+        }
+
+    case_ids = [res[0] for res in results]
+    matched_cases = db.query(CaseDocument).filter(CaseDocument.id.in_(case_ids)).all()
+
+    # Build context from case summaries
+    context_chunks = []
+    for case in matched_cases:
+        score = next((res[1] for res in results if res[0] == case.id), 0)
+        chunk = f"--- Case: {case.filename} (Relevance Score: {score*100:.1f}%) ---\n"
+        chunk += f"Summary:\n{case.summary_text or case.original_text[:1000]}\n"
+        if case.keywords:
+            kw_list = [k.get("keyword") if isinstance(k, dict) else k for k in case.keywords[:5]]
+            chunk += f"Keywords: {', '.join(kw_list)}\n"
+        context_chunks.append(chunk)
+
+    combined_context = "\n".join(context_chunks)
+
+    system_prompt = """You are an advanced Global Legal Database Assistant for the Zilla Parishad system.
+Your job is to answer the user's question by analyzing the provided summaries from multiple cases in our database.
+Synthesize the information across these cases to give a clear, comprehensive answer.
+Always cite the specific Case Filename when drawing information from it.
+If the provided case summaries do not contain enough information to fully answer the question, state what is known and what is missing."""
+
+    try:
+        result = get_llm_response(
+            user_message=query,
+            system_prompt=system_prompt,
+            document_context=combined_context
+        )
+        return result
+    except Exception as e:
+        return {
+            "response": f"I found {len(matched_cases)} relevant cases, but the LLM provider failed to generate a response. Relevant cases: " + ", ".join([c.filename for c in matched_cases]),
+            "provider": "offline"
+        }

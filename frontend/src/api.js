@@ -36,11 +36,12 @@ export const fetchProfile = async () => {
   return response.data;
 };
 
-export const chatWithBot = async (query, documentText = null, keywords = null) => {
+export const chatWithBot = async (query, documentText = null, keywords = null, globalMode = false) => {
   const response = await api.post('/chat/', {
     query,
     document_text: documentText,
-    document_keywords: keywords
+    document_keywords: keywords,
+    global_mode: globalMode
   });
   return response.data;
 };
