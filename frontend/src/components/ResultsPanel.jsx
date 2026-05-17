@@ -1,4 +1,4 @@
-import { FiClock, FiFile, FiTag, FiBriefcase, FiBook, FiCopy } from 'react-icons/fi';
+import { FiClock, FiFile, FiTag, FiBriefcase, FiBook, FiCopy, FiEdit, FiCheck, FiX } from 'react-icons/fi';
 import { useState } from 'react';
 import LegalAnalysis from './LegalAnalysis';
 import TagsEditor from './TagsEditor';
@@ -20,6 +20,8 @@ const CASE_TYPE_COLORS = {
 
 const ResultsPanel = ({ originalText, summaryResult, keywords, citations, caseType, legalAnalysis, activeTab, setActiveTab, caseId, tags, onTagsUpdate }) => {
   const [copied, setCopied] = useState(false);
+  const [isEditingSummary, setIsEditingSummary] = useState(false);
+  const [editedSummary, setEditedSummary] = useState('');
 
   const handleCopySummary = () => {
     if (!summaryResult?.summary) return;
@@ -27,6 +29,35 @@ const ResultsPanel = ({ originalText, summaryResult, keywords, citations, caseTy
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  };
+
+  const startEditingSummary = () => {
+    setEditedSummary(summaryResult?.summary || '');
+    setIsEditingSummary(true);
+  };
+
+  const cancelEditingSummary = () => {
+    setIsEditingSummary(false);
+  };
+
+  const saveEditedSummary = async () => {
+    if (!caseId) return;
+    try {
+      const response = await fetch(`/api/case/${caseId}/summary`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ summary_text: editedSummary }),
+      });
+      if (!response.ok) throw new Error('Failed to save summary');
+      
+      // Update local state via summaryResult if possible, or notify parent
+      // Since summaryResult is a prop, we might need a callback to refresh it
+      setIsEditingSummary(false);
+      alert('Summary updated successfully!');
+    } catch (err) {
+      console.error('Error saving summary:', err);
+      alert('Error saving summary. Please try again.');
+    }
   };
 
   return (
@@ -129,13 +160,53 @@ const ResultsPanel = ({ originalText, summaryResult, keywords, citations, caseTy
                   <FiCopy size={13} />
                   {copied ? 'Copied!' : 'Copy'}
                 </button>
+                <button
+                  onClick={isEditingSummary ? saveEditedSummary : startEditingSummary}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    padding: '0.3rem 0.6rem',
+                    fontSize: '0.8rem',
+                    background: isEditingSummary ? '#059669' : 'var(--bg-card)',
+                    color: isEditingSummary ? '#fff' : 'var(--text-muted)',
+                    border: '1px solid var(--panel-border)',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  title={isEditingSummary ? "Save summary" : "Edit summary"}
+                >
+                  {isEditingSummary ? <FiCheck size={13} /> : <FiEdit size={13} />}
+                  {isEditingSummary ? 'Save' : 'Edit'}
+                </button>
               </div>
             )}
           </div>
           
           <div className={`result-content ${activeTab === 'summary' ? 'summary-text' : ''}`}>
             {activeTab === 'summary' ? (
-              summaryResult ? summaryResult.summary : 'No summary generated yet.'
+              isEditingSummary ? (
+                <textarea
+                  value={editedSummary}
+                  onChange={(e) => setEditedSummary(e.target.value)}
+                  style={{
+                    width: '100%',
+                    minHeight: '300px',
+                    padding: '1rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--panel-border)',
+                    background: 'var(--bg-card)',
+                    color: 'var(--text-main)',
+                    fontFamily: 'inherit',
+                    fontSize: '1rem',
+                    lineHeight: '1.6',
+                    resize: 'vertical'
+                  }}
+                />
+              ) : (
+                summaryResult ? summaryResult.summary : 'No summary generated yet.'
+              )
             ) : activeTab === 'analysis' ? (
               <LegalAnalysis analysis={legalAnalysis} />
             ) : (

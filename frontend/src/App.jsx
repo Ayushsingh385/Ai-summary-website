@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { uploadPdf, summarizeText, extractKeywords, classifyCase, analyzeDocument, downloadSummary, downloadOriginalCase, saveCase, fetchProfile } from './api';
+import { uploadPdf, summarizeText, extractKeywords, classifyCase, analyzeDocument, downloadSummary, downloadOriginalCase, saveCase, fetchProfile, getCase } from './api';
 
 import Header from './components/Header';
 import FileUpload from './components/FileUpload';
@@ -172,29 +172,40 @@ function App() {
   };
 
   const onSelectCaseFromHistory = async (caseItem) => {
-    setOriginalText(caseItem.original_text || "");
-    setFilename(caseItem.filename || "");
-    setKeywords(caseItem.keywords || []);
-    setCitations([]);
-    setCurrentCaseId(caseItem.id);
-    setCurrentTags(caseItem.tags || []);
-
-    setSummaryResult({
-      summary: caseItem.summary_text || "",
-      original_word_count: caseItem.stats?.original_word_count || 0,
-      summary_word_count: caseItem.stats?.summary_word_count || 0,
-      original_stats: caseItem.stats || {}
-    });
-
-    // Classify the case type from history
-    if (caseItem.original_text) {
-      try {
-        const classifyRes = await classifyCase(caseItem.original_text);
-        setCaseType(classifyRes);
-      } catch (err) {
-        console.warn("Classify error from history:", err);
-        setCaseType(null);
+    setLoadingMsg('Loading case details...');
+    try {
+      // Fetch full case payload including text because /history omits it now to save bandwidth
+      const fullCase = await getCase(caseItem.id);
+      
+      setOriginalText(fullCase.original_text || "");
+      setFilename(fullCase.filename || "");
+      setKeywords(fullCase.keywords || []);
+      setCitations([]);
+      setCurrentCaseId(fullCase.id);
+      setCurrentTags(fullCase.tags || []);
+  
+      setSummaryResult({
+        summary: fullCase.summary_text || "",
+        original_word_count: fullCase.stats?.original_word_count || 0,
+        summary_word_count: fullCase.stats?.summary_word_count || 0,
+        original_stats: fullCase.stats || {}
+      });
+  
+      // Classify the case type from history
+      if (fullCase.original_text) {
+        try {
+          const classifyRes = await classifyCase(fullCase.original_text);
+          setCaseType(classifyRes);
+        } catch (err) {
+          console.warn("Classify error from history:", err);
+          setCaseType(null);
+        }
       }
+    } catch (err) {
+      console.error("Error loading case:", err);
+      setErrorMsg('Failed to load full case details.');
+    } finally {
+      setLoadingMsg('');
     }
 
     setIsSidebarOpen(false);

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { FiDownload, FiFileText, FiChevronDown } from 'react-icons/fi';
+import { FiDownload, FiFileText, FiChevronDown, FiPrinter } from 'react-icons/fi';
 
 const TEMPLATES = [
   { value: '', label: 'Plain (Default)' },
@@ -122,6 +122,15 @@ const DownloadBar = ({ onDownload, isDownloading, disabled, activeTab }) => {
         >
           <FiDownload />
           {activeTab === 'summary' ? 'PDF Summary' : 'PDF Original'}
+        </button>
+
+        <button
+          className="btn btn-outline"
+          onClick={() => window.print()}
+          disabled={isDownloading || disabled}
+          style={{ borderColor: 'var(--accent-primary)' }}
+        >
+          <FiPrinter /> Print
         </button>
       </div>
     </div>

@@ -148,8 +148,8 @@ const BatchUpload = ({ onBatchComplete, onSelectFile, initialFiles = [], onFiles
       }, 500); // Small delay to let initial uploads complete
 
     } else {
-      // PARALLEL MODE: Full processing in batches of 3-5
-      const BATCH_SIZE = 4;
+      // PARALLEL MODE: Full processing in batches of 10-15
+      const BATCH_SIZE = 12;
       const batchResults = [];
       const batchErrors = [];
 
@@ -305,30 +305,8 @@ const BatchUpload = ({ onBatchComplete, onSelectFile, initialFiles = [], onFiles
           Drop multiple PDF files here
         </p>
         <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-          or click to browse — {lazyMode ? 'text returns immediately, summary in background' : 'files processed in parallel (3-5 at a time)'}
+          or click to browse — {lazyMode ? 'text returns immediately, summary in background' : 'files processed in parallel (10-15 at a time)'}
         </p>
-
-        {/* Lazy Mode Toggle */}
-        <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
-          <input
-            type="checkbox"
-            id="lazyMode"
-            checked={lazyMode}
-            onChange={(e) => setLazyMode(e.target.checked)}
-            style={{
-              width: '14px',
-              height: '14px',
-              accentColor: 'var(--accent-primary)',
-              cursor: 'pointer',
-            }}
-          />
-          <label
-            htmlFor="lazyMode"
-            style={{ cursor: 'pointer', fontSize: '0.75rem', color: 'var(--text-muted)' }}
-          >
-            Lazy upload (return text immediately)
-          </label>
-        </div>
 
         <input
           ref={inputRef}
@@ -338,6 +316,47 @@ const BatchUpload = ({ onBatchComplete, onSelectFile, initialFiles = [], onFiles
           onChange={handleFileSelect}
           style={{ display: 'none' }}
         />
+      </div>
+
+      {/* Lazy Mode Toggle */}
+      <div style={{
+        marginTop: '-0.5rem',
+        marginBottom: '1.5rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '0.5rem',
+        padding: '0.5rem 1rem',
+        borderRadius: '8px',
+        background: 'rgba(255, 255, 255, 0.02)',
+        border: '1px solid var(--panel-border)',
+        width: 'fit-content',
+        margin: '0 auto 1.5rem auto'
+      }}>
+        <input
+          type="checkbox"
+          id="lazyMode"
+          checked={lazyMode}
+          onChange={(e) => setLazyMode(e.target.checked)}
+          style={{
+            width: '15px',
+            height: '15px',
+            accentColor: 'var(--accent-primary)',
+            cursor: 'pointer',
+          }}
+        />
+        <label
+          htmlFor="lazyMode"
+          style={{
+            cursor: 'pointer',
+            fontSize: '0.8rem',
+            fontWeight: '500',
+            color: 'var(--text-muted)',
+            userSelect: 'none'
+          }}
+        >
+          Lazy upload (return text immediately, process summaries in background)
+        </label>
       </div>
 
       {/* Action Bar */}

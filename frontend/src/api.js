@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_URL = 'http://127.0.0.1:8000/api';
+// Use environment variable for deployment, fallback to localhost for dev
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const API_URL = `${BASE_URL}/api`;
 
 const api = axios.create({
   baseURL: API_URL,
@@ -14,7 +16,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-const AUTH_URL = 'http://127.0.0.1:8000/auth';
+const AUTH_URL = `${BASE_URL}/auth`;
 
 export const signUp = async (userData) => {
   const response = await axios.post(`${AUTH_URL}/signup`, userData);
@@ -189,6 +191,11 @@ export const fetchHistory = async () => {
 
 export const searchCases = async (query, topK = 50) => {
   const response = await api.post('/search', { query, top_k: topK });
+  return response.data;
+};
+
+export const getCase = async (caseId) => {
+  const response = await api.get(`/case/${caseId}`);
   return response.data;
 };
 

@@ -3,12 +3,18 @@ Chat Service - Intent routing with LLM-powered responses.
 Handles both structured actions and conversational queries.
 """
 import re
+import logging
 from typing import Dict, Any
 from sqlalchemy.orm import Session
 from models import CaseDocument
 from services.vector_service import vector_service
 from services.nlp_service import summarize_text, extract_keywords
+from services.precedent_service import find_precedents
+from services.cross_reference_service import cross_reference_document
+from services.timeline_service import extract_legal_timeline
 from services.llm_service import get_llm_response
+
+logger = logging.getLogger(__name__)
 
 # Intent patterns for structured actions
 INTENT_PATTERNS = {
@@ -16,6 +22,9 @@ INTENT_PATTERNS = {
     "count": ["how many", "count", "total cases", "number of cases"],
     "summarize": ["summar", "bullet", "key points", "main points"],
     "entities": ["entit", "name", "person", "organi", "who", "people", "companies"],
+    "precedent": ["precedent", "contradict", "supporting", "divergence", "case contrast"],
+    "cross_ref": ["statute", "law", "section", "cross reference", "act", "rules", "regulation"],
+    "timeline": ["timeline", "chronology", "dates", "sequence of events", "history of case"],
 }
 
 
@@ -104,6 +113,65 @@ def handle_entities_intent(document_text: str, keywords: list) -> str:
     return response
 
 
+def handle_precedent_intent(document_text: str, db: Session) -> str:
+    """Handle requests to find supporting or contradictory precedents."""
+    if not document_text:
+        return "Please select a case file first so I can analyze its precedents."
+    
+    case = db.query(CaseDocument).filter(CaseDocument.original_text == document_text).first()
+    if not case:
+        return "I couldn't find this document in my database. Please ensure it's saved first."
+    
+    results = find_precedents(case.id, db)
+    if not results:
+        return "I couldn't find any significant precedents that support or contradict this case."
+    
+    response = "### Precedent Analysis\n"
+    for res in results:
+        analysis = res.get("analysis", "No detail available.")
+        filename = res.get("filename", "Unknown")
+        response += f"- **{filename}**: {analysis}\n"
+    
+    return response
+
+
+def handle_cross_ref_intent(document_text: str) -> str:
+    """Handle requests for legal statute cross-referencing."""
+    if not document_text:
+        return "Please select a document so I can cross-reference the laws cited within it."
+    
+    results = cross_reference_document(document_text)
+    if not results:
+        return "I didn't find any recognizable legal citations or statutes in this document."
+    
+    response = "### Legal Cross-References\n"
+    for res in results:
+        summary = res.get("summary", "No summary available.")
+        citation = res.get("citation", "Unknown")
+        response += f"- **{citation}**: {summary}\n"
+        
+    return response
+
+
+def handle_timeline_intent(document_text: str) -> str:
+    """Handle requests for a case timeline."""
+    if not document_text:
+        return "Please select a document so I can reconstruct its timeline."
+    
+    timeline = extract_legal_timeline(document_text)
+    if not timeline:
+        return "I couldn't extract a chronological timeline from this document."
+    
+    response = "### Case Timeline\n"
+    for event in timeline:
+        date = event.get("date", "Unknown Date")
+        ev = event.get("event", "No description")
+        actor = event.get("actor", "Unknown")
+        response += f"- **{date}**: {ev} (Actor: {actor})\n"
+        
+    return response
+
+
 def process_chat_query(
     query: str,
     document_text: str = None,
@@ -138,6 +206,15 @@ def process_chat_query(
     if intent == "entities":
         return {"response": handle_entities_intent(document_text, keywords), "provider": "local"}
 
+    if intent == "precedent":
+        return {"response": handle_precedent_intent(document_text, db), "provider": "local"}
+
+    if intent == "cross_ref":
+        return {"response": handle_cross_ref_intent(document_text), "provider": "local"}
+
+    if intent == "timeline":
+        return {"response": handle_timeline_intent(document_text), "provider": "local"}
+
     # For conversational queries, use the LLM
     context = None
     if document_text:
@@ -163,23 +240,49 @@ Keep responses focused and actionable."""
 
 
 def _handle_global_rag(query: str, db: Session) -> Dict[str, Any]:
-    """Handle a query that searches across ALL ingested cases via FAISS."""
-    # Search FAISS index for relevant cases
-    results = vector_service.find_similar(query, top_k=3, threshold=0.1)
+    """Handle a query that searches across ALL ingested cases via FAISS using Multi-Stage RAG."""
     
-    if not results:
+    # --- Stage 1: Query Expansion ---
+    expansion_prompt = (
+        "You are a legal search expert. The user is searching a database of Zilla Parishad cases. "
+        "Generate 3 semantic variations of their query to capture different ways the same legal concept "
+        "might be phrased in official documents (e.g., formal terminology, common synonyms). "
+        "Return only the variations, one per line, no numbering."
+    )
+    
+    queries_to_run = [query]
+    try:
+        expansion_res = get_llm_response(user_message=query, system_prompt=expansion_prompt)
+        variations = expansion_res.get("response", "").strip().split("\\n")
+        queries_to_run.extend([v.strip() for v in variations if v.strip()][:3])
+    except Exception as e:
+        logger.warning(f"Query expansion failed: {e}. Proceeding with original query.")
+
+    # --- Stage 2: Broad Retrieval ---
+    all_matched_results = []
+    for q in queries_to_run:
+        res = vector_service.find_similar(q, top_k=5, threshold=0.1)
+        all_matched_results.extend(res)
+
+    if not all_matched_results:
         return {
-            "response": "I searched the entire database but couldn't find any cases related to your query.", 
+            "response": "I searched the entire database with multiple query variations but couldn't find any related cases.", 
             "provider": "local"
         }
 
-    case_ids = [res[0] for res in results]
-    matched_cases = db.query(CaseDocument).filter(CaseDocument.id.in_(case_ids)).all()
+    # Deduplicate and sort by score
+    unique_matches = {}
+    for cid, score in all_matched_results:
+        if cid not in unique_matches or score > unique_matches[cid]:
+            unique_matches[cid] = score
+    
+    sorted_ids = sorted(unique_matches.keys(), key=lambda x: unique_matches[x], reverse=True)[:5]
+    matched_cases = db.query(CaseDocument).filter(CaseDocument.id.in_(sorted_ids)).all()
 
-    # Build context from case summaries
+    # --- Stage 3: Context Synthesis (Reranking via LLM) ---
     context_chunks = []
     for case in matched_cases:
-        score = next((res[1] for res in results if res[0] == case.id), 0)
+        score = unique_matches.get(case.id, 0)
         chunk = f"--- Case: {case.filename} (Relevance Score: {score*100:.1f}%) ---\n"
         chunk += f"Summary:\n{case.summary_text or case.original_text[:1000]}\n"
         if case.keywords:
@@ -204,6 +307,6 @@ If the provided case summaries do not contain enough information to fully answer
         return result
     except Exception as e:
         return {
-            "response": f"I found {len(matched_cases)} relevant cases, but the LLM provider failed to generate a response. Relevant cases: " + ", ".join([c.filename for c in matched_cases]),
+            "response": f"I found {len(matched_cases)} relevant cases using multi-stage search, but the LLM provider failed to generate a final response. Relevant cases: " + ", ".join([c.filename for c in matched_cases]),
             "provider": "offline"
         }

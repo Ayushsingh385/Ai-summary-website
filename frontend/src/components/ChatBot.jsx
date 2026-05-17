@@ -123,10 +123,11 @@ const ChatBot = ({ documentText, keywords }) => {
             whileTap={{ scale: 0.95 }}
             onClick={() => setIsOpen(true)}
             style={styles.floatingButton}
+            className="chatbot-fab"
             aria-label="Open chat"
           >
             <FiMessageSquare size={22} />
-            <span style={{ marginLeft: '12px', fontWeight: '600', fontSize: '0.95rem' }}>
+            <span className="chatbot-fab-text" style={{ marginLeft: '12px', fontWeight: '600', fontSize: '0.95rem' }}>
               Ask Legal Assistant
             </span>
           </motion.button>
@@ -142,6 +143,7 @@ const ChatBot = ({ documentText, keywords }) => {
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             ref={chatRef}
             style={styles.chatContainer}
+            className="chatbot-panel"
           >
             <div style={styles.chatHeader}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -277,7 +279,7 @@ const styles = {
   floatingButton: {
     bottom: '2.5rem',
     right: '1.75rem',
-    zIndex: 9999,
+    zIndex: 9998,
     height: '56px',
     padding: '0 1.75rem',
     borderRadius: '28px',

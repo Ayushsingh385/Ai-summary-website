@@ -161,7 +161,7 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
 
       {/* Upload Zones */}
       {!comparisonResult && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
+        <div className="compare-zones" style={{ gap: '2rem', marginBottom: '2rem' }}>
           <div>
             <h3 style={{ marginBottom: '1rem', color: 'var(--text-main)', textAlign: 'center' }}>First file</h3>
             {text1 ? (
@@ -283,7 +283,7 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
                     <div style={{ fontWeight: 'bold', color: '#fb923c', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       {CATEGORY_ICONS[diff.category] || null} {diff.category}
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div className="compare-diff-grid" style={{ gap: '1rem' }}>
                       <div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.4rem', fontWeight: 'bold' }}>Only in Document 1:</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
@@ -313,7 +313,7 @@ const CompareMode = ({ selectedLanguage, initialHistoricalComparison }) => {
               (comparisonResult.unique_topics_doc2 && comparisonResult.unique_topics_doc2.length > 0)) && (
               <div style={{ marginTop: '1.5rem', padding: '1rem', background: 'rgba(251, 146, 60, 0.05)', borderRadius: '8px', border: '1px solid rgba(251, 146, 60, 0.1)' }}>
                 <div style={{ fontWeight: 'bold', color: '#fb923c', marginBottom: '0.8rem' }}>Unique Topics</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div className="compare-unique-grid" style={{ gap: '1rem' }}>
                   <div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.4rem', fontWeight: 'bold' }}>Only in Document 1:</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>

@@ -4,19 +4,28 @@ keyword extraction, and summary download.
 """
 
 import asyncio
-from fastapi import APIRouter, UploadFile, File, HTTPException, Request
+from fastapi import APIRouter, UploadFile, File, HTTPException, Request, BackgroundTasks
 from fastapi.responses import Response
+
 from pydantic import BaseModel
 from typing import Optional, List, Any, Dict
 
 from services.pdf_service import validate_pdf, extract_text_from_pdf, extract_text_from_image
-from services.nlp_service import summarize_text, extract_keywords, compute_text_stats, extract_citations, compare_documents, classify_case_type, analyze_legal_document
+from services.nlp_service import summarize_text, extract_keywords, compute_text_stats, extract_citations, classify_case_type, analyze_legal_document
+from services.difference_engine import compare_documents_semantic, get_comparison_summary
+from services.precedent_service import find_precedents
+from services.cross_reference_service import cross_reference_document
+from services.timeline_service import extract_legal_timeline
 from services.download_service import (
+
+
+
     generate_summary_pdf, generate_summary_txt, generate_summary_docx,
     generate_original_pdf, generate_original_docx, generate_comparison_docx,
 )
 from services.vector_service import vector_service
-from services.difference_engine import compare_documents_semantic, get_comparison_summary
+from services.job_service import create_job, update_job, get_job_status
+
 from services.brief_service import generate_brief_docx
 from services.llm_service import get_llm_status
 
@@ -135,16 +144,21 @@ class SaveComparisonRequest(BaseModel):
     shared_blocks: Optional[List[Any]] = []
 
 
-class SearchRequest(BaseModel):
-    """Request body for the /search endpoint."""
-    query: str
-    top_k: Optional[int] = 1
+class UpdateSummaryRequest(BaseModel):
+    """Request body for updating a case summary."""
+    summary_text: str
 
 
 class SemanticCompareRequest(BaseModel):
     """Request body for the /compare_semantic endpoint."""
     text1: str
     text2: str
+
+
+class SearchRequest(BaseModel):
+    """Request body for the /search endpoint."""
+    query: str
+    top_k: Optional[int] = 50
 
 
 # ──────────────────────────────────────────────────────────────
@@ -526,6 +540,7 @@ async def batch_upload(request: Request, files: List[UploadFile] = File(...)):
     """
     # Validate all files first
     file_datas = []
+    results = []
     errors = []
 
     for file in files:
@@ -888,8 +903,6 @@ async def get_history(db: Session = Depends(get_db)):
     cases = db.query(
         CaseDocument.id,
         CaseDocument.filename,
-        CaseDocument.original_text,
-        CaseDocument.summary_text,
         CaseDocument.created_at,
         CaseDocument.stats,
         CaseDocument.tags,
@@ -925,8 +938,6 @@ async def get_history(db: Session = Depends(get_db)):
             unique_cases.append({
                 "id": c.id,
                 "filename": c.filename,
-                "original_text": c.original_text,
-                "summary_text": c.summary_text,
                 "created_at": c.created_at,
                 "stats": stats_val,
                 "tags": tags_val or [],
@@ -973,8 +984,6 @@ async def search_cases(request: SearchRequest, db: Session = Depends(get_db)):
         formatted_results.append({
             "id": case.id,
             "filename": case.filename,
-            "original_text": case.original_text,
-            "summary_text": case.summary_text,
             "keywords": case.keywords,
             "stats": case.stats,
             "created_at": case.created_at,
@@ -996,12 +1005,47 @@ async def search_cases(request: SearchRequest, db: Session = Depends(get_db)):
     return {"results": final_results}
 
 
+@router.get("/case/{case_id}")
+async def get_case(case_id: int, db: Session = Depends(get_db)):
+    """
+    Fetch a single case by ID with full text content.
+    """
+    case_doc = db.query(CaseDocument).filter(CaseDocument.id == case_id).first()
+    if not case_doc:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return {
+        "id": case_doc.id,
+        "filename": case_doc.filename,
+        "original_text": case_doc.original_text,
+        "summary_text": case_doc.summary_text,
+        "keywords": case_doc.keywords,
+        "stats": case_doc.stats,
+        "tags": case_doc.tags or [],
+        "status": case_doc.status or "new",
+        "case_type": case_doc.case_type,
+        "created_at": case_doc.created_at
+    }
+
+
 class UpdateTagsRequest(BaseModel):
     tags: List[str]
 
 
-@router.put("/case/{case_id}/tags")
-async def update_case_tags(case_id: int, request: UpdateTagsRequest, db: Session = Depends(get_db)):
+@router.patch("/case/{case_id}/summary")
+async def update_case_summary(case_id: int, request: UpdateSummaryRequest, db: Session = Depends(get_db)):
+    """
+    Update the summary text for an existing case.
+    """
+    case = db.query(CaseDocument).filter(CaseDocument.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    case.summary_text = request.summary_text
+    db.commit()
+    db.refresh(case)
+
+    return {"message": "Summary updated successfully", "summary_text": case.summary_text}
+
     """
     Update the tags for an existing case.
     """
